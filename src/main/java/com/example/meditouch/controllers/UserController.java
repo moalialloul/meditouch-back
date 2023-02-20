@@ -49,9 +49,10 @@ import models.UserModel;
 @RestController
 public class UserController {
 	PreparedStatement myStmt;
+	private SimpMessagingTemplate messagingTemplate;
 
 	public UserController(SimpMessagingTemplate messagingTemplate) {
-//		this.messagingTemplate = messagingTemplate;
+		this.messagingTemplate = messagingTemplate;
 	}
 
 	@PostMapping("/updateBlog")
@@ -118,6 +119,11 @@ public class UserController {
 			blogModel.setBlogId(slotsGeneratedKeys.getInt(1));
 		}
 		myStmt.close();
+
+		JSONObject json = new JSONObject();
+		json.put("blog", blogModel);
+
+		messagingTemplate.convertAndSend("/topic/blogs/", json.toString());
 
 		jsonResponse.put("message", "Blog Created Successfully");
 		jsonResponse.put("blog", blogModel);
@@ -348,7 +354,14 @@ public class UserController {
 		myStmt.setInt(1, postponeAppointmentModel.getAppointmentId());
 		myStmt.executeUpdate();
 
-		jsonResponse.put("message", "Appointment postponed successfully. Wait doctor approvalF");
+		JSONObject json = new JSONObject();
+		json.put("type", "POSTPONE");
+		json.put("appointment", postponeAppointmentModel);
+
+		messagingTemplate.convertAndSend("/topic/appointment/" + postponeAppointmentModel.getBusinessAccountFk(),
+				json.toString());
+
+		jsonResponse.put("message", "Appointment postponed successfully. Wait doctor approval");
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
 
@@ -413,8 +426,8 @@ public class UserController {
 
 	}
 
-	@DeleteMapping("/subscribe/{userEmail}")
-	public ResponseEntity<Object> subscribe(@PathVariable("userEmail") String userEmail)
+	@DeleteMapping("/deleteSubscription/{userEmail}")
+	public ResponseEntity<Object> deleteSubscription(@PathVariable("userEmail") String userEmail)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 
@@ -454,6 +467,13 @@ public class UserController {
 		myStmt.setInt(1, commentId);
 
 		myStmt.executeUpdate();
+
+		JSONObject json = new JSONObject();
+		json.put("type", "DELETE");
+		json.put("commentId", commentId);
+
+		messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
+
 		jsonResponse.put("message", "Comment Deleted successfully");
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
@@ -475,6 +495,13 @@ public class UserController {
 		myStmt.setInt(2, communityPostCommentModel.getCommentId());
 
 		myStmt.executeUpdate();
+
+		JSONObject json = new JSONObject();
+		json.put("type", "UPDATE");
+		json.put("communityPostComment", communityPostCommentModel);
+
+		messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
+
 		jsonResponse.put("message", "Comment Updated successfully");
 		jsonResponse.put("Comment", communityPostCommentModel);
 		jsonResponse.put("responseCode", 200);
@@ -544,6 +571,13 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				communityPostCommentModel.setCommentId(id);
+
+				JSONObject json = new JSONObject();
+				json.put("type", "ADD");
+				json.put("communityPostComment", communityPostCommentModel);
+
+				messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
+
 				jsonResponse.put("message", "Comment Added successfully");
 				jsonResponse.put("post", communityPostCommentModel);
 				jsonResponse.put("responseCode", 200);
@@ -623,6 +657,14 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				appointmentModel.setAppointmentId(id);
+
+				JSONObject json = new JSONObject();
+				json.put("type", "ADD");
+				json.put("appointment", appointmentModel);
+
+				messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
+						json.toString());
+
 				jsonResponse.put("message", "Appointment Added successfully");
 				jsonResponse.put("appointment", appointmentModel);
 				jsonResponse.put("responseCode", 200);
@@ -674,6 +716,20 @@ public class UserController {
 				WebSocketController.sendMessage("/topic/appointments/" + appointmentModel.getUserFk(), json.toString());
 
 			}
+			if (affectedRowName.equals("isCancelled")) {
+				JSONObject json = new JSONObject();
+				json.put("type", "UPDATE");
+				json.put("appointment", appointmentModel);
+				if (appointmentModel.getCancelledBy() == UserRoles.PATIENT) {
+
+					messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
+							json.toString());
+				} else {
+
+					messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getUserFk(),
+							json.toString());
+				}
+			}
 
 		}
 		jsonResponse.put("message", "Appointment Updated successfully");
@@ -701,6 +757,13 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				communityPostModel.setPostId(id);
+
+				JSONObject json = new JSONObject();
+				json.put("type", "ADD");
+				json.put("communityPost", communityPostModel);
+
+				messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
+
 				jsonResponse.put("message", "Post Added successfully");
 				jsonResponse.put("post", communityPostModel);
 				jsonResponse.put("responseCode", 200);
@@ -726,6 +789,13 @@ public class UserController {
 		myStmt.setInt(3, communityPostModel.getPostId());
 
 		myStmt.executeUpdate();
+
+		JSONObject json = new JSONObject();
+		json.put("type", "UPDATE");
+		json.put("communityPost", communityPostModel);
+
+		messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
+
 		jsonResponse.put("message", "Post Updated successfully");
 		jsonResponse.put("post", communityPostModel);
 		jsonResponse.put("responseCode", 200);
@@ -746,6 +816,12 @@ public class UserController {
 		myStmt.setInt(1, postId);
 
 		myStmt.executeUpdate();
+		JSONObject json = new JSONObject();
+		json.put("type", "DELETE");
+		json.put("communityPostId", postId);
+
+		messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
+
 		jsonResponse.put("message", "Post Deleted successfully");
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
@@ -845,6 +921,11 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				feedbackModel.setFeedbackId(id);
+				JSONObject json = new JSONObject();
+				json.put("type", "ADD");
+				json.put("feedback", feedbackModel);
+
+				messagingTemplate.convertAndSend("/topic/feedbacks/", json.toString());
 				jsonResponse.put("message", "Favorite Added successfully");
 				jsonResponse.put("feedbacks", feedbackModel);
 				jsonResponse.put("responseCode", 200);
@@ -867,8 +948,16 @@ public class UserController {
 		myStmt.setInt(1, feedbackId);
 
 		myStmt.executeUpdate();
+
+		JSONObject json = new JSONObject();
+		json.put("type", "DELETE");
+		json.put("feedbackId", feedbackId);
+
+		messagingTemplate.convertAndSend("/topic/feedbacks/", json.toString());
+
 		jsonResponse.put("message", "Feedback deleted successfully");
 		jsonResponse.put("responseCode", 200);
+
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}

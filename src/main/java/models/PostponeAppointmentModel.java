@@ -4,6 +4,15 @@ public class PostponeAppointmentModel {
 	int appointmentId;
 	int slotFk;
 	int isApproved = 0;
+	int businessAccountFk;
+
+	public int getBusinessAccountFk() {
+		return businessAccountFk;
+	}
+
+	public void setBusinessAccountFk(int businessAccountFk) {
+		this.businessAccountFk = businessAccountFk;
+	}
 
 	public int getAppointmentId() {
 		return appointmentId;
@@ -29,11 +38,12 @@ public class PostponeAppointmentModel {
 		this.isApproved = isApproved;
 	}
 
-	public PostponeAppointmentModel(int appointmentId, int slotFk, int isApproved) {
+	public PostponeAppointmentModel(int appointmentId, int slotFk, int isApproved, int businessAccountFk) {
 		super();
 		this.appointmentId = appointmentId;
 		this.slotFk = slotFk;
 		this.isApproved = isApproved;
+		this.businessAccountFk = businessAccountFk;
 	}
 
 	public PostponeAppointmentModel() {
@@ -42,8 +52,8 @@ public class PostponeAppointmentModel {
 
 	@Override
 	public String toString() {
-		return "{\"appointmentId\":" + appointmentId + ", \"slotFk\":" + slotFk + ", \"isApproved\":" + isApproved
-				+ "}";
+		return "{\"businessAccountFk\":" + businessAccountFk + ",\"appointmentId\":" + appointmentId + ", \"slotFk\":"
+				+ slotFk + ", \"isApproved\":" + isApproved + "}";
 	}
 
 }
