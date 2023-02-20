@@ -1,10 +1,13 @@
 package models;
 
+import Enums.CurrencyUnits;
+
 public class ServiceModel {
 	int serviceId;
 	int businessAccountFk;
 	double servicePrice;
 	String serviceName;
+	CurrencyUnits currencyUnit;
 
 	public int getServiceId() {
 		return serviceId;
@@ -22,12 +25,14 @@ public class ServiceModel {
 		this.businessAccountFk = businessAccountFk;
 	}
 
-	public ServiceModel(int serviceId, int businessAccountFk, double servicePrice, String serviceName) {
+	public ServiceModel(int serviceId, int businessAccountFk, double servicePrice, String serviceName,
+			CurrencyUnits currencyUnit) {
 		super();
 		this.serviceId = serviceId;
 		this.businessAccountFk = businessAccountFk;
 		this.servicePrice = servicePrice;
 		this.serviceName = serviceName;
+		this.currencyUnit = currencyUnit;
 	}
 
 	public ServiceModel() {
@@ -37,7 +42,16 @@ public class ServiceModel {
 	@Override
 	public String toString() {
 		return "\"serviceId\":" + serviceId + ", \"businessAccountFk\":" + businessAccountFk + ", \"servicePrice\":"
-				+ servicePrice + ", \"serviceName\":\"" + serviceName + "\"}";
+				+ servicePrice + ", \"serviceName\":\"" + serviceName + "\" , \"currencyUnit\":\"" + currencyUnit
+				+ "\"}";
+	}
+
+	public CurrencyUnits getCurrencyUnit() {
+		return currencyUnit;
+	}
+
+	public void setCurrencyUnit(CurrencyUnits currencyUnit) {
+		this.currencyUnit = currencyUnit;
 	}
 
 	public double getServicePrice() {

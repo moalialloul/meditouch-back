@@ -217,13 +217,14 @@ public class BusinessAccountController {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"insert into business_accounts_services_table (businessAccountFk, servicePrice, serviceName) values ( ?, ?)",
+				"insert into business_accounts_services_table (businessAccountFk, servicePrice, serviceName, currencyUnit) values ( ?,?,?, ?)",
 				Statement.RETURN_GENERATED_KEYS);
 
 		for (int i = 0; i < serviceModel.size(); i++) {
 			myStmt.setInt(1, serviceModel.get(i).getBusinessAccountFk());
-			myStmt.setDouble(1, serviceModel.get(i).getServicePrice());
-			myStmt.setString(1, serviceModel.get(i).getServiceName());
+			myStmt.setDouble(2, serviceModel.get(i).getServicePrice());
+			myStmt.setString(3, serviceModel.get(i).getServiceName());
+			myStmt.setString(4, serviceModel.get(i).getCurrencyUnit().toString());
 
 			myStmt.addBatch();
 		}
@@ -232,10 +233,37 @@ public class BusinessAccountController {
 		int i = 0;
 		while (slotsGeneratedKeys.next()) {
 			serviceModel.get(i).setServiceId(slotsGeneratedKeys.getInt(1));
+			i++;
 		}
 		myStmt.close();
 
 		jsonResponse.put("message", "Service Created Successfully");
+		jsonResponse.put("services", serviceModel);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/updateService")
+	public ResponseEntity<Object> updateService(List<ServiceModel> serviceModel) throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"update business_accounts_services_table set servicePrice = ? , serviceName = ? , servicePriceUnit =? values where serviceId=?");
+
+		for (int i = 0; i < serviceModel.size(); i++) {
+			myStmt.setDouble(1, serviceModel.get(i).getServicePrice());
+			myStmt.setString(2, serviceModel.get(i).getServiceName());
+			myStmt.setString(3, serviceModel.get(i).getCurrencyUnit().toString());
+			myStmt.setInt(4, serviceModel.get(i).getServiceId());
+
+			myStmt.addBatch();
+		}
+		myStmt.executeBatch();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Services Updated Successfully");
 		jsonResponse.put("services", serviceModel);
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
@@ -589,6 +617,7 @@ public class BusinessAccountController {
 			int i = 0;
 			while (slotsGeneratedKeys.next()) {
 				businessAccountScheduleModel.getScheduleSlots().get(i).setSlotId(slotsGeneratedKeys.getInt(1));
+				i++;
 			}
 			myStmt.close();
 
@@ -664,83 +693,97 @@ public class BusinessAccountController {
 
 		if (globalSearchModel.getMinPrice() != -1 && globalSearchModel.getMaxPrice() != -1
 				&& !Double.isNaN(globalSearchModel.getMinPrice()) && !Double.isNaN(globalSearchModel.getMaxPrice())) {
+			appendWhere = false;
+
 			query += (appendWhere ? " where " : " and ") + "  st.servicePrice >=  " + globalSearchModel.getMinPrice()
 					+ " and st.servicePrice <= " + globalSearchModel.getMaxPrice();
 
 		}
+		if (globalSearchModel.getMinAvailability() != null && globalSearchModel.getMaxAvailability() != null) {
+			query += (appendWhere ? " where " : " and ") + " basst.slotStartTime >=  "
+					+ globalSearchModel.getMinAvailability() + " and baast.slotEndTime <= "
+					+ globalSearchModel.getMaxAvailability();
+		}
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myRs = myStmt.executeQuery();
-		JSONArray jsonArray = new JSONArray();
-		Map<Integer, JSONObject> map = new HashMap<Integer, JSONObject>();
+		try {
+			myRs = myStmt.executeQuery();
+			JSONArray jsonArray = new JSONArray();
+			Map<Integer, JSONObject> map = new HashMap<Integer, JSONObject>();
 
-		while (myRs.next()) {
-			JSONObject userDetails = new JSONObject();
-			JSONObject userSchedule = new JSONObject();
-			int businessAccountId = myRs.getInt("businessAccountId");
-			userSchedule.put("servicePrice", myRs.getString("servicePrice"));
-			userSchedule.put("serviceName", myRs.getString("serviceName"));
-			userSchedule.put("serviceId", myRs.getInt("serviceId"));
-			userSchedule.put("slotDate", myRs.getDate("slotDate"));
-			userSchedule.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
-			userSchedule.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
-			userSchedule.put("isLocked", myRs.getBoolean("isLocked"));
-			if (map.containsKey(businessAccountId)) {
-				JSONObject json = new JSONObject();
+			while (myRs.next()) {
+				JSONObject userDetails = new JSONObject();
+				JSONObject userSchedule = new JSONObject();
+				int businessAccountId = myRs.getInt("businessAccountId");
+				userSchedule.put("servicePrice", myRs.getString("servicePrice"));
+				userSchedule.put("serviceName", myRs.getString("serviceName"));
+				userSchedule.put("serviceId", myRs.getInt("serviceId"));
+				userSchedule.put("slotDate", myRs.getDate("slotDate"));
+				userSchedule.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
+				userSchedule.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
+				userSchedule.put("isLocked", myRs.getBoolean("isLocked"));
+				if (map.containsKey(businessAccountId)) {
+					JSONObject json = new JSONObject();
 
-				JSONArray userScheduleArray = (JSONArray) map.get(businessAccountId).get("userSchedule");
-				userScheduleArray.put(userSchedule);
-				json.put("userDetails", map.get(businessAccountId).get("userDetails"));
-				json.put("userSchedule", userScheduleArray);
+					JSONArray userScheduleArray = (JSONArray) map.get(businessAccountId).get("userSchedule");
+					userScheduleArray.put(userSchedule);
+					json.put("userDetails", map.get(businessAccountId).get("userDetails"));
+					json.put("userSchedule", userScheduleArray);
 
-				map.put(businessAccountId, json);
-			} else {
-				JSONObject json = new JSONObject();
-				JSONArray userScheduleArray = new JSONArray();
-				userDetails.put("biography", myRs.getString("biography"));
-				userDetails.put("clinicLocation", myRs.getString("clinicLocation"));
-				userDetails.put("clinicLocationLongitude", myRs.getDouble("clinicLocationLongitude"));
-				userDetails.put("clinicLocationLatitude", myRs.getDouble("clinicLocationLatitude"));
-				userDetails.put("businessAccountId", businessAccountId);
-				userDetails.put("firstName", myRs.getString("firstName"));
-				userDetails.put("lastName", myRs.getString("lastName"));
-				userDetails.put("userEmail", myRs.getString("userEmail"));
-				userDetails.put("profilePicture", myRs.getString("profilePicture"));
-				userDetails.put("specialityName", myRs.getString("specialityName"));
-				userDetails.put("specialityDescription", myRs.getString("specialityDescription"));
-				json.put("userDetails", userDetails);
-				userScheduleArray.put(userSchedule);
-				json.put("userSchedule", userScheduleArray);
+					map.put(businessAccountId, json);
+				} else {
+					JSONObject json = new JSONObject();
+					JSONArray userScheduleArray = new JSONArray();
+					userDetails.put("biography", myRs.getString("biography"));
+					userDetails.put("clinicLocation", myRs.getString("clinicLocation"));
+					userDetails.put("clinicLocationLongitude", myRs.getDouble("clinicLocationLongitude"));
+					userDetails.put("clinicLocationLatitude", myRs.getDouble("clinicLocationLatitude"));
+					userDetails.put("businessAccountId", businessAccountId);
+					userDetails.put("firstName", myRs.getString("firstName"));
+					userDetails.put("lastName", myRs.getString("lastName"));
+					userDetails.put("userEmail", myRs.getString("userEmail"));
+					userDetails.put("profilePicture", myRs.getString("profilePicture"));
+					userDetails.put("specialityName", myRs.getString("specialityName"));
+					userDetails.put("specialityDescription", myRs.getString("specialityDescription"));
+					json.put("userDetails", userDetails);
+					userScheduleArray.put(userSchedule);
+					json.put("userSchedule", userScheduleArray);
 
-				map.put(businessAccountId, json);
+					map.put(businessAccountId, json);
+
+				}
 
 			}
+			for (Entry<Integer, JSONObject> entry : map.entrySet()) {
+				JSONObject value = entry.getValue();
+				JSONObject userDetails = value.getJSONObject("userDetails");
+				if (globalSearchModel.getMinDistance() != -1 && globalSearchModel.getMaxDistance() != -1
+						&& userDetails.getDouble("clinicLocationLatitude") != -1) {
+					double distance = CommonFunctions.distance(globalSearchModel.getMyLatitude(),
+							globalSearchModel.getMyLongitude(), userDetails.getDouble("clinicLocationLatitude"),
+							userDetails.getDouble("clinicLocationLongitude"));
+					if (distance >= globalSearchModel.getMinDistance()
+							&& distance <= globalSearchModel.getMaxDistance()) {
+						value.put("distance", distance);
 
-		}
-		for (Entry<Integer, JSONObject> entry : map.entrySet()) {
-			JSONObject value = entry.getValue();
-			JSONObject userDetails = value.getJSONObject("userDetails");
-			if (globalSearchModel.getMinDistance() != -1 && globalSearchModel.getMaxDistance() != -1
-					&& userDetails.getDouble("clinicLocationLatitude") != -1) {
-				double distance = CommonFunctions.distance(globalSearchModel.getMyLatitude(),
-						globalSearchModel.getMyLongitude(), userDetails.getDouble("clinicLocationLatitude"),
-						userDetails.getDouble("clinicLocationLongitude"));
-				if (distance >= globalSearchModel.getMinDistance() && distance <= globalSearchModel.getMaxDistance()) {
-					value.put("distance", distance);
+						jsonArray.put(value);
 
+					}
+				} else {
 					jsonArray.put(value);
 
 				}
-			} else {
-				jsonArray.put(value);
-
 			}
+			jsonResponse.put("message", "All Results");
+			jsonResponse.put("data", jsonArray);
+			jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+		} catch (Exception e) {
+			jsonResponse.put("message", "Fields Error");
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
 		}
-		jsonResponse.put("message", "All Results");
-		jsonResponse.put("data", jsonArray);
-		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
-		jsonResponse.put("responseCode", 200);
-		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 }

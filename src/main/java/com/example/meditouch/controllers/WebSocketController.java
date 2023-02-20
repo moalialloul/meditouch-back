@@ -5,17 +5,17 @@ import org.springframework.stereotype.Controller;
 
 @Controller
 public class WebSocketController {
-	private final SimpMessagingTemplate messagingTemplate;
+	static SimpMessagingTemplate messagingTemplate;
 
 	public WebSocketController() {
-		this.messagingTemplate = null;
+		WebSocketController.messagingTemplate = null;
 	}
 
 	public WebSocketController(SimpMessagingTemplate messagingTemplate) {
-		this.messagingTemplate = messagingTemplate;
+		WebSocketController.messagingTemplate = messagingTemplate;
 	}
 
-	public void sendMessage(String channelName, Object message) {
+	public static void sendMessage(String channelName, Object message) {
 
 		messagingTemplate.convertAndSend(channelName, message);
 	}

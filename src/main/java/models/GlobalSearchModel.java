@@ -12,6 +12,16 @@ public class GlobalSearchModel {
 
 	double myLongitude = -1;
 	double myLatitude = -1;
+	Timestamp minAvailability;
+	Timestamp maxAvailability;
+
+	public Timestamp getMaxAvailability() {
+		return maxAvailability;
+	}
+
+	public void setMaxAvailability(Timestamp maxAvailability) {
+		this.maxAvailability = maxAvailability;
+	}
 
 	Timestamp minDateTime;
 	Timestamp maxDateTime;
@@ -65,7 +75,8 @@ public class GlobalSearchModel {
 	}
 
 	public GlobalSearchModel(int specialityFk, double minDistance, double maxDistance, double minPrice, double maxPrice,
-			double myLatitude, double myLongitude, Timestamp minDateTime, Timestamp maxDateTime) {
+			double myLatitude, double myLongitude, Timestamp minDateTime, Timestamp maxDateTime,
+			Timestamp minAvailability, Timestamp maxAvailability) {
 		super();
 		this.specialityFk = specialityFk;
 		this.minDistance = minDistance;
@@ -77,6 +88,8 @@ public class GlobalSearchModel {
 		this.myLongitude = myLongitude;
 		this.minDateTime = minDateTime;
 		this.maxDateTime = maxDateTime;
+		this.minAvailability = minAvailability;
+		this.maxAvailability = maxAvailability;
 
 	}
 
@@ -89,7 +102,16 @@ public class GlobalSearchModel {
 		return "{\"specialityFk\":" + specialityFk + ",\"minDistance\":" + minDistance + ",\"maxDistance\":"
 				+ maxDistance + ", \"minPrice\":" + minPrice + ", \"maxPrice\":" + maxPrice + ", \"myLatitude\" : "
 				+ myLatitude + ", \"myLongitude\":" + myLongitude + ", \"minDateTime\":" + minDateTime
-				+ ",\"maxDateTime\":" + maxDateTime + "}";
+				+ ",\"maxDateTime\":" + maxDateTime + ",\"minAvailability\":" + minAvailability
+				+ ",\"maxAvailability\":" + maxAvailability + "}";
+	}
+
+	public Timestamp getMinAvailability() {
+		return minAvailability;
+	}
+
+	public void setMinAvailability(Timestamp minAvailability) {
+		this.minAvailability = minAvailability;
 	}
 
 	public double getMaxDistance() {

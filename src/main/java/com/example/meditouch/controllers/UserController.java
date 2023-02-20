@@ -7,6 +7,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.Iterator;
+import java.util.List;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -28,13 +30,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import Enums.TokenType;
 import Enums.UserRoles;
 import models.AppointmentModel;
+import models.BlogModel;
 import models.BusinessAccountModel;
 import models.BusinessAccountScheduleSlotModel;
 import models.CommunityPostCommentModel;
 import models.CommunityPostModel;
+import models.ContactUsModel;
 import models.FavoriteModel;
 import models.FeedbackModel;
+import models.NotificationsModel;
+import models.PostponeAppointmentModel;
 import models.ReservationSlot;
+import models.SubscriptionModel;
 import models.TokenModel;
 import models.UpdatePasswordModel;
 import models.UserModel;
@@ -46,10 +53,398 @@ public class UserController {
 	public UserController(SimpMessagingTemplate messagingTemplate) {
 //		this.messagingTemplate = messagingTemplate;
 	}
-	
+
+	@PostMapping("/updateBlog")
+	public ResponseEntity<Object> updateBlog(@RequestBody BlogModel blogModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update blogs_table set blogType=?, blogDate=?, blogTitle=?, blogUrl=? wjere blogId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, blogModel.getBlogType());
+		myStmt.setTimestamp(2, blogModel.getBlogDate());
+		myStmt.setString(3, blogModel.getBlogTitle());
+		myStmt.setString(4, blogModel.getBlogUrl());
+		myStmt.setInt(5, blogModel.getBlogId());
+
+		myStmt.executeQuery();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Blog Updated Successfully");
+		jsonResponse.put("blog", blogModel);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@DeleteMapping("/deleteBlogs")
+	public ResponseEntity<Object> deleteBlogs(@RequestBody List<BlogModel> blogModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into blogs_table (blogType, blogDate, blogTitle, blogUrl) values (?,?,?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		for (int i = 0; i < blogModel.size(); i++) {
+			myStmt.setInt(1, blogModel.get(i).getBlogId());
+			myStmt.addBatch();
+		}
+
+		myStmt.executeBatch();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Blogs Deleted Successfully");
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/addBlog")
+	public ResponseEntity<Object> addBlog(@RequestBody BlogModel blogModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into blogs_table (blogType, blogDate, blogTitle, blogUrl) values (?,?,?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, blogModel.getBlogType());
+		myStmt.setTimestamp(2, blogModel.getBlogDate());
+		myStmt.setString(3, blogModel.getBlogTitle());
+		myStmt.setString(4, blogModel.getBlogUrl());
+
+		myStmt.executeQuery();
+		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
+		while (slotsGeneratedKeys.next()) {
+			blogModel.setBlogId(slotsGeneratedKeys.getInt(1));
+		}
+		myStmt.close();
+
+		jsonResponse.put("message", "Blog Created Successfully");
+		jsonResponse.put("blog", blogModel);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@GetMapping("/getBlogs/{pageNumber}/{recordsByPage}")
+	public ResponseEntity<Object> getBlogs(@PathVariable("pageNumber") int pageNumber,
+			@PathVariable("recordsByPage") int recordsByPage)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select * from blogs_table Limit " + recordsByPage + " OFFSET "
+				+ ((pageNumber - 1) * recordsByPage);
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("blogId", myRs.getInt("blogId"));
+
+			json.put("businessAccountId", myRs.getString("blogType"));
+			json.put("slotDate", myRs.getTimestamp("blogDate"));
+
+			json.put("biography", myRs.getString("blogTitle"));
+			json.put("clinicLocation", myRs.getString("blogUrl"));
+
+			jsonArray.put(json);
+		}
+		jsonResponse.put("message", "All Blogs");
+		jsonResponse.put("blogs", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@GetMapping("/getNotifications/{pageNumber}/{recordsByPage}/{userFk}")
+	public ResponseEntity<Object> getNotifications(@PathVariable("pageNumber") int pageNumber,
+			@PathVariable("recordsByPage") int recordsByPage, @PathVariable(name = "userFk") int userFk)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select COUNT(*) AS total_count from notifications_table";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		ResultSet myRs = myStmt.executeQuery();
+		int totalNumberOfPages = 0;
+
+		if (myRs.next()) {
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+		}
+
+		query = "select * from notifications_table nt join users_table ut on ut.userId=cpt.userFromFk where nt.userToFk=? ";
+
+		query += " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+
+		myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("notificationText", myRs.getString("notificationText"));
+			json.put("notificationType", myRs.getString("notificationType"));
+			json.put("firstName", myRs.getString("firstName"));
+			json.put("lastName", myRs.getString("lastName"));
+			json.put("userEmail", myRs.getString("userEmail"));
+			json.put("profilePicture", myRs.getString("profilePicture"));
+
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "Notifications");
+		jsonResponse.put("notifications", jsonArray);
+		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/deleteNotification")
+	public ResponseEntity<Object> deleteNotification(@RequestBody List<NotificationsModel> notificationModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "delete from notifications_table where notificationId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		for (int i = 0; i < notificationModel.size(); i++) {
+			myStmt.setInt(1, notificationModel.get(i).getNotificationId());
+			myStmt.addBatch();
+		}
+
+		myStmt.executeBatch();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Notifications Updated Successfully");
+		jsonResponse.put("notifications", notificationModel);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@DeleteMapping("/deleteAllNotifications/{userFk}")
+	public ResponseEntity<Object> deleteAllNotifications(@PathVariable("userFk") int userFk)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "delete from notifications_table where userToFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+
+		myStmt.executeUpdate();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Notifications Deleted Successfully");
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/updateNotification")
+	public ResponseEntity<Object> updateNotification(@RequestBody List<NotificationsModel> notificationModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update notifications_table set isOpen=? where notificationId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		for (int i = 0; i < notificationModel.size(); i++) {
+			myStmt.setBoolean(1, notificationModel.get(i).getIsOpen());
+			myStmt.setInt(2, notificationModel.get(i).getNotificationId());
+			myStmt.addBatch();
+		}
+
+		myStmt.executeBatch();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Notifications Updated Successfully");
+		jsonResponse.put("notifications", notificationModel);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/addNotification")
+	public ResponseEntity<Object> addNotification(@RequestBody List<NotificationsModel> notificationModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into notifications_table (userToFk, userFromFk,notificationText, notificationType, appointmentFk, commentFk, ,promoCodeFk, referralFk, favoriteFk) values(?,?,?,?,?,?,?,?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		for (int i = 0; i < notificationModel.size(); i++) {
+			myStmt.setInt(1, notificationModel.get(i).getUserToFk());
+			myStmt.setInt(2, notificationModel.get(i).getUserToFk());
+			myStmt.setString(3, notificationModel.get(i).getNotificationText());
+			myStmt.setString(4, notificationModel.get(i).getNotificationType().toString());
+			myStmt.setInt(5, notificationModel.get(i).getAppointmentFk());
+			myStmt.setInt(6, notificationModel.get(i).getCommentFk());
+			myStmt.setInt(7, notificationModel.get(i).getPromoCodeFk());
+			myStmt.setInt(8, notificationModel.get(i).getReferralFk());
+			myStmt.setInt(9, notificationModel.get(i).getFavoriteFk());
+			myStmt.addBatch();
+
+		}
+
+		myStmt.executeBatch();
+		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
+		int i = 0;
+		while (slotsGeneratedKeys.next()) {
+			notificationModel.get(i).setNotificationId(slotsGeneratedKeys.getInt(1));
+			i++;
+		}
+		myStmt.close();
+
+		jsonResponse.put("message", "Notifications Added Successfully");
+		jsonResponse.put("services", notificationModel);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/contactUs")
+	public ResponseEntity<Object> contactUs(@RequestBody ContactUsModel contactUsModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into contact_us_table (firstName, lastName,subject, message) values(?,?,?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt.setString(1, contactUsModel.getFirstName());
+		myStmt.setString(2, contactUsModel.getLastName());
+		myStmt.setString(3, contactUsModel.getSubject());
+		myStmt.setString(4, contactUsModel.getMessage());
+
+		myStmt.executeUpdate();
+		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
+			if (generatedKeys.next()) {
+				int id = generatedKeys.getInt(1);
+				contactUsModel.setContactId(id);
+				jsonResponse.put("message", "Message Sent successfully");
+				jsonResponse.put("feedbacks", contactUsModel);
+				jsonResponse.put("responseCode", 200);
+				myStmt.close();
+
+				return ResponseEntity.ok(jsonResponse.toString());
+			}
+		}
+		return null;
+
+	}
+
+	@PostMapping("/postponeAppointment")
+	public ResponseEntity<Object> postponeAppointment(@RequestBody PostponeAppointmentModel postponeAppointmentModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "update appointments_table set slotFk=?, isApproved=0 where appointmentId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		myStmt.setInt(1, postponeAppointmentModel.getAppointmentId());
+		myStmt.executeUpdate();
+
+		jsonResponse.put("message", "Appointment postponed successfully. Wait doctor approvalF");
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/updateUser")
+	public ResponseEntity<Object> updateUser(@RequestBody UserModel userModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "update users_table set userEmail=?, userLanguage=?, profilePicture=? where userId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, userModel.getUserEmail());
+		myStmt.setString(2, userModel.getUserLanguage());
+		myStmt.setString(3, userModel.getProfilePicture());
+		myStmt.setInt(4, userModel.getUserId());
+		myStmt.executeUpdate();
+		jsonResponse.put("message", "User Updated successfully");
+		jsonResponse.put("subscription", userModel);
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/subscribe")
+	public ResponseEntity<Object> subscribe(@RequestBody SubscriptionModel subscriptionModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "insert into subscriptions_table (userEmail) values(?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt.setString(1, subscriptionModel.getUserEmail());
+
+		try {
+			myStmt.executeUpdate();
+			try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
+				if (generatedKeys.next()) {
+					int id = generatedKeys.getInt(1);
+					subscriptionModel.setSubscriptionId(id);
+					jsonResponse.put("message", "Subscription Added successfully");
+					jsonResponse.put("subscription", subscriptionModel);
+					jsonResponse.put("responseCode", 200);
+					myStmt.close();
+
+					return ResponseEntity.ok(jsonResponse.toString());
+				}
+			}
+		} catch (Exception e) {
+			jsonResponse.put("message", "User Subscription already exist");
+			jsonResponse.put("responseCode", -1);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+		return null;
+
+	}
+
+	@DeleteMapping("/subscribe/{userEmail}")
+	public ResponseEntity<Object> subscribe(@PathVariable("userEmail") String userEmail)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "select * from subscriptions_table where userEmail=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, userEmail);
+
+		ResultSet myRs = myStmt.executeQuery();
+		if (myRs.next()) {
+			query = "delete from subscriptions_table where userEmail=?";
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+			myStmt.setString(1, userEmail);
+			jsonResponse.put("message", "Subscription Deleted successfully");
+			jsonResponse.put("responseCode", 200);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+		} else {
+			jsonResponse.put("message", "This email is not subscribed");
+			jsonResponse.put("responseCode", 200);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+
+	}
+
 	@DeleteMapping("/deleteCommunityPostComment")
-	public ResponseEntity<Object> deleteCommunityPostComment(
-			@PathVariable("commentId") int commentId)
+	public ResponseEntity<Object> deleteCommunityPostComment(@PathVariable("commentId") int commentId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "delete from posts_comments_table  where commentId=?";
@@ -161,9 +556,10 @@ public class UserController {
 
 	}
 
-	@GetMapping("/getCommunityPosts/{pageNumber}/{recordsByPage}")
+	@GetMapping("/getCommunityPosts/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getCommunityPosts(@PathVariable("pageNumber") int pageNumber,
-			@PathVariable("recordsByPage") int recordsByPage)
+			@PathVariable("recordsByPage") int recordsByPage,
+			@PathVariable(name = "searchText", required = false) String searchText)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from community_posts_table";
@@ -175,8 +571,12 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
 		}
 
-		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk limit "
-				+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk ";
+		if (searchText != null) {
+			query += " where cpt.postService LIKE '%" + searchText + "%' or cpt.postDescription LIKE '%" + searchText
+					+ "%'";
+		}
+		query += " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
@@ -236,12 +636,13 @@ public class UserController {
 	}
 
 	@PostMapping("/updateAppointment")
-	public ResponseEntity<Object> updateAppointment(@RequestBody AppointmentModel appointmentModel)
-			throws SQLException, IOException, NoSuchAlgorithmException {
-		JSONObject jsonResponse = new JSONObject();
-		String query = "update appointments_table set appointmentActualStartTime=?, appointmentActualEndTime=?, appointmentStatus=?, isApproved=?, isCancelled=?, cancelledBy=?";
+	public ResponseEntity<Object> updateAppointment(
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+			@RequestBody AppointmentModel appointmentModel) throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update appointments_table set appointmentActualStartTime=?, appointmentActualEndTime=?, appointmentStatus=?, isApproved=?, isCancelled=?, cancelledBy=? where appointmentId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
 		myStmt.setTimestamp(1, appointmentModel.getAppointmentActualStartTime());
 		myStmt.setTimestamp(2, appointmentModel.getAppointmentActualEndTime());
@@ -249,8 +650,32 @@ public class UserController {
 		myStmt.setBoolean(4, appointmentModel.getIsApproved());
 		myStmt.setBoolean(5, appointmentModel.getIsCancelled());
 		myStmt.setString(6, appointmentModel.getCancelledBy().toString());
+		myStmt.setInt(7, appointmentModel.getAppointmentId());
 
 		myStmt.executeUpdate();
+		ResultSet generatedKeys = myStmt.getGeneratedKeys();
+
+		while (generatedKeys.next()) {
+			String affectedRowName = generatedKeys.getString(1);
+			// doctor has all appointments all start of appointments will be disabled except
+			// first
+			// press start on first appointment
+			// two btns will appear Alertnextuser and EndAppointmentBtn
+			// EndAppointmentBtn will be disabled until he alerts next user and thus send
+			// message to next user (already has his id from appointments array)
+			// after he alerts Alertnextuser will disappear and EndAppointmentBtn will be
+			// enabled and thus update appointmentActualEndTime
+			// after EndAppointmentBtn pressed status of appointment will be ended (replace
+			// btns with ended)
+			// and start of next appointment will be enabled ...
+			if (affectedRowName.equals("appointmentActualStartTime")) {
+				JSONObject json = new JSONObject();
+				json.put("message", "It's Your Turn. Doctor Is Waiting You");
+				WebSocketController.sendMessage("/topic/appointments/" + appointmentModel.getUserFk(), json.toString());
+
+			}
+
+		}
 		jsonResponse.put("message", "Appointment Updated successfully");
 		jsonResponse.put("appointment", appointmentModel);
 		jsonResponse.put("responseCode", 200);
@@ -404,7 +829,7 @@ public class UserController {
 
 	}
 
-	@PostMapping("/addFeedback")
+	@PostMapping("/addFeedback/")
 	public ResponseEntity<Object> addFeedback(@RequestBody FeedbackModel feedbackModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -413,7 +838,7 @@ public class UserController {
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setInt(1, feedbackModel.getBusinessAccountFk());
 		myStmt.setInt(2, feedbackModel.getUserFk());
-		myStmt.setString(2, feedbackModel.getFeedbackDescription());
+		myStmt.setString(3, feedbackModel.getFeedbackDescription());
 
 		myStmt.executeUpdate();
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
@@ -464,9 +889,10 @@ public class UserController {
 
 	}
 
-	@GetMapping("/getAllFeedbacks/{pageNumber}/{recordsByPage}")
+	@GetMapping("/getAllFeedbacks/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getAllFeedbacks(@PathVariable("pageNumber") int pageNumber,
-			@PathVariable("recordsByPage") int recordsByPage)
+			@PathVariable("recordsByPage") int recordsByPage,
+			@PathVariable(name = "searchText", required = false) String searchText)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from feedbacks_table";
@@ -478,8 +904,11 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
 		}
 
-		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk limit "
-				+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk ";
+		if (searchText != null) {
+			query += " where f.feedbackDescription LIKE '%" + searchText + "%'";
+		}
+		query += "limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
@@ -510,9 +939,10 @@ public class UserController {
 
 	}
 
-	@GetMapping("/getUserFeedbacks/{userFk}/{pageNumber}/{recordsByPage}")
+	@GetMapping("/getUserFeedbacks/{userFk}/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getUserFeedbacks(@PathVariable("userFk") int userFk,
-			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
+			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
+			@PathVariable(name = "searchText", required = false) String searchText)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from feedbacks_table where userFk=?";
@@ -525,8 +955,11 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
 		}
 
-		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? limit "
-				+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? ";
+		if (searchText != null) {
+			query += " and f.feedbackDescription LIKE '%" + searchText + "%'";
+		}
+		query += "limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, userFk);
