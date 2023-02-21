@@ -21,7 +21,6 @@ public class AppointmentPrescriptionModel {
 	}
 
 	public AppointmentPrescriptionModel() {
-		super();
 	}
 
 	public AppointmentPrescriptionModel(int appointmentFk, String prescriptionDescription, int prescriptionId) {

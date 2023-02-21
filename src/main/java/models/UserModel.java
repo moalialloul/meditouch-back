@@ -1,6 +1,7 @@
 package models;
 
 import java.sql.Date;
+import java.sql.Timestamp;
 
 import Enums.UserRoles;
 
@@ -12,7 +13,7 @@ public class UserModel {
 	String password;
 	boolean isVerified;
 	int numberOfLoginTrials;
-	Date registrationDate;
+	Timestamp registrationDate;
 	boolean isApproved;
 	boolean isLocked;
 	UserRoles userRole;
@@ -73,7 +74,7 @@ public class UserModel {
 		this.password = password;
 	}
 
-	public boolean isVerified() {
+	public boolean getIsVerified() {
 		return isVerified;
 	}
 
@@ -89,15 +90,15 @@ public class UserModel {
 		this.numberOfLoginTrials = numberOfLoginTrials;
 	}
 
-	public Date getRegistrationDate() {
+	public Timestamp getRegistrationDate() {
 		return registrationDate;
 	}
 
-	public void setRegistrationDate(Date registrationDate) {
+	public void setRegistrationDate(Timestamp registrationDate) {
 		this.registrationDate = registrationDate;
 	}
 
-	public boolean isApproved() {
+	public boolean getIsApproved() {
 		return isApproved;
 	}
 
@@ -105,9 +106,11 @@ public class UserModel {
 		this.isApproved = isApproved;
 	}
 
-	public boolean isLocked() {
+	public boolean getIsLocked() {
 		return isLocked;
 	}
+
+	
 
 	public void setIsLocked(boolean isLocked) {
 		this.isLocked = isLocked;
@@ -138,7 +141,7 @@ public class UserModel {
 	}
 
 	public UserModel(int userId, String firstName, String lastName, String userEmail, String password,
-			boolean isVerified, int numberOfLoginTrials, Date registrationDate, boolean isApproved, boolean isLocked,
+			boolean isVerified, int numberOfLoginTrials, Timestamp registrationDate, boolean isApproved, boolean isLocked,
 			UserRoles userRole, String userLanguage, String profilePicture) {
 		super();
 		this.userId = userId;

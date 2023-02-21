@@ -5,9 +5,8 @@ public class ReservationSlot {
 	int slotFk;
 	int userFk;
 
-	@Override
 	public String toString() {
-		return "\"reservationId\":" + reservationId + ", \"slotId\":" + slotFk + ", \"userFk\":" + userFk + "}";
+		return "{\"reservationId\":" + reservationId + ", \"slotId\":" + slotFk + ", \"userFk\":" + userFk + "}";
 	}
 
 	public ReservationSlot(int reservationId, int slotFk, int userFk) {

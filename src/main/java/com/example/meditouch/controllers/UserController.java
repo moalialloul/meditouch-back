@@ -7,8 +7,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -26,6 +33,9 @@ import com.example.meditouch.CommonFunctions;
 import com.example.meditouch.DatabaseConnection;
 import com.example.meditouch.PasswordUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import Enums.TokenType;
 import Enums.UserRoles;
@@ -42,6 +52,9 @@ import models.NotificationsModel;
 import models.PostponeAppointmentModel;
 import models.ReservationSlot;
 import models.SubscriptionModel;
+import models.SurveyAnswersModel;
+import models.SurveyModel;
+import models.SurveyQuestionAnswersModel;
 import models.TokenModel;
 import models.UpdatePasswordModel;
 import models.UserModel;
@@ -55,11 +68,226 @@ public class UserController {
 		this.messagingTemplate = messagingTemplate;
 	}
 
+	//passed
+	@GetMapping("/getSurveyQuestionsAnswers/{surveyFk}")
+	public ResponseEntity<Object> getSurveyQuestionsAnswers(@PathVariable("surveyFk") int surveyFk)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement("SELECT "
+				+ "  sq.questionId AS questionId," + "  sq.questionText," + "  spa.answerId AS answerId,"
+				+ "  spa.answerText," + "  COUNT(sqa.answerFk) AS answerCount" + " FROM survey_questions_table sq"
+				+ " JOIN survey_questions_answers_table spa ON sq.questionId = spa.questionFk"
+				+ " LEFT JOIN survey_answers_table sqa ON spa.answerId = sqa.answerFk" + " WHERE sq.surveyFk = ?"
+				+ " GROUP BY sq.questionId, spa.answerId" + " ORDER BY sq.questionId, spa.answerId;" + "");
+		myStmt.setInt(1, surveyFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray resultArray = new JSONArray();
+		while (myRs.next()) {
+			int questionId = myRs.getInt("questionId");
+			String questionText = myRs.getString("questionText");
+			int answerId = myRs.getInt("answerId");
+			String answerText = myRs.getString("answerText");
+			int answerCount = myRs.getInt("answerCount");
+			JSONObject questionObject = null;
+			for (int i = 0; i < resultArray.length(); i++) {
+				JSONObject obj = resultArray.getJSONObject(i);
+				if (obj.getInt("questionId") == questionId) {
+					questionObject = obj;
+					break;
+				}
+			}
+			if (questionObject == null) {
+				questionObject = new JSONObject();
+				questionObject.put("questionId", questionId);
+				questionObject.put("questionText", questionText);
+				questionObject.put("answers", new JSONArray());
+				resultArray.put(questionObject);
+			}
+
+			JSONObject answerObject = new JSONObject();
+			answerObject.put("answerId", answerId);
+			answerObject.put("answerText", answerText);
+			answerObject.put("answerCount", answerCount);
+			questionObject.getJSONArray("answers").put(answerObject);
+
+		}
+		jsonResponse.put("message", "Answers Returned");
+		jsonResponse.put("answers", resultArray);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	//passed
+	@PostMapping("/addSurveyAnswers")
+	public ResponseEntity<Object> addSurveyAnswers(@RequestBody SurveyAnswersModel[] surveyAnswersModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into survey_answers_table (questionFk, answerFk) values (?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		for (int i = 0; i < surveyAnswersModel.length; i++) {
+			myStmt.setInt(1, surveyAnswersModel[i].getQuestionFk());
+			myStmt.setInt(2, surveyAnswersModel[i].getAnswerFk());
+			myStmt.addBatch();
+		}
+
+		myStmt.executeBatch();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Answers Submitted Successfully");
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@PostMapping("/addSurvey")
+	public ResponseEntity<Object> addSurvey(@RequestBody SurveyModel surveyModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into surveys_table (surveyName, surveyDescription) values (?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt.setString(1, surveyModel.getSurveyName());
+		myStmt.setString(2, surveyModel.getSurveyDescription());
+
+		myStmt.executeUpdate();
+		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
+		while (slotsGeneratedKeys.next()) {
+			surveyModel.setSurveyId(slotsGeneratedKeys.getInt(1));
+		}
+		myStmt.close();
+
+		Gson gson = new Gson();
+		String surveyModelJson = gson.toJson(surveyModel);
+		JsonObject jsonObject = JsonParser.parseString(surveyModelJson).getAsJsonObject();
+		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
+				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+
+		jsonResponse.put("message", "Survey Created Successfully");
+		jsonResponse.put("survey", jsonReturned);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	//passed
+	@GetMapping("/getSurvey/{surveyFk}")
+	public ResponseEntity<Object> getSurvey(@PathVariable("surveyFk") int surveyFk)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select * from survey_questions_table sq join survey_questions_answers_table sqa on sqa.questionFk = sq.questionId where sq.surveyFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, surveyFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		Map<Integer, JSONObject> map = new HashMap<Integer, JSONObject>();
+		while (myRs.next()) {
+			int questionFk = myRs.getInt("questionFk");
+			if (map.containsKey(questionFk)) {
+				JSONObject json = map.get(questionFk);
+				JSONObject jsonAnswer = new JSONObject();
+
+				JSONArray answers = json.getJSONArray("answers");
+				jsonAnswer.put("answerText", myRs.getString("answerText"));
+				jsonAnswer.put("answerId", myRs.getInt("answerId"));
+				answers.put(jsonAnswer);
+				json.put("questionText", map.get(questionFk).get("questionText"));
+
+				json.put("answers", answers);
+				map.replace(questionFk, json);
+
+			} else {
+				JSONObject json = new JSONObject();
+				JSONArray answers = new JSONArray();
+				JSONObject jsonAnswers = new JSONObject();
+
+				json.put("questionText", myRs.getString("questionText"));
+				json.put("questionId", myRs.getInt("questionId"));
+
+				jsonAnswers.put("answerId", myRs.getInt("answerId"));
+				jsonAnswers.put("answerText", myRs.getString("answerText"));
+				answers.put(jsonAnswers);
+				json.put("answers", answers);
+				map.put(questionFk, json);
+			}
+
+		}
+		myStmt.close();
+
+		// Create a JSONArray to store the final results
+		JSONArray jsonArray = new JSONArray();
+
+		// Convert the map to a JSONArray and add each JSONObject to the array
+		for (JSONObject jsonObject : map.values()) {
+			jsonArray.put(jsonObject);
+		}
+
+		jsonResponse.put("message", "Survey Questions");
+		jsonResponse.put("surveyQuestions", jsonArray);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	//passed
+	@PostMapping("/addSurveyQuestionsAnswers/{surveyFk}")
+	public ResponseEntity<Object> addSurveyQuestionsAnswers(@PathVariable("surveyFk") int surveyFk,
+			@RequestBody SurveyQuestionAnswersModel[] surveyQuestionAnswersModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "insert into survey_questions_table (surveyFk,questionText) values (?,?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+
+		for (int i = 0; i < surveyQuestionAnswersModel.length; i++) {
+			myStmt.setInt(1, surveyFk);
+			myStmt.setString(2, surveyQuestionAnswersModel[i].getQuestionText());
+
+			myStmt.addBatch();
+		}
+
+		myStmt.executeBatch();
+		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
+		int i = 0;
+		while (slotsGeneratedKeys.next()) {
+			surveyQuestionAnswersModel[i].setQuestionFk(slotsGeneratedKeys.getInt(1));
+			i++;
+		}
+		query = "insert into survey_questions_answers_table (questionFk, answerText) values (?,?)";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		for (int j = 0; j < surveyQuestionAnswersModel.length; j++) {
+			for (int k = 0; k < surveyQuestionAnswersModel[j].getAnswerText().size(); k++) {
+				myStmt.setInt(1, surveyQuestionAnswersModel[j].getQuestionFk());
+				myStmt.setString(2, surveyQuestionAnswersModel[j].getAnswerText().get(k));
+				myStmt.addBatch();
+
+			}
+
+		}
+		myStmt.executeBatch();
+
+		myStmt.close();
+
+		jsonResponse.put("message", "Survey Questions Created Successfully");
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@PostMapping("/updateBlog")
 	public ResponseEntity<Object> updateBlog(@RequestBody BlogModel blogModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "update blogs_table set blogType=?, blogDate=?, blogTitle=?, blogUrl=? wjere blogId=?";
+		String query = "update blogs_table set blogType=?, blogDate=?, blogTitle=?, blogUrl=? where blogId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setString(1, blogModel.getBlogType());
@@ -68,26 +296,26 @@ public class UserController {
 		myStmt.setString(4, blogModel.getBlogUrl());
 		myStmt.setInt(5, blogModel.getBlogId());
 
-		myStmt.executeQuery();
+		myStmt.executeUpdate();
 
 		myStmt.close();
 
 		jsonResponse.put("message", "Blog Updated Successfully");
-		jsonResponse.put("blog", blogModel);
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteBlogs")
-	public ResponseEntity<Object> deleteBlogs(@RequestBody List<BlogModel> blogModel)
+	public ResponseEntity<Object> deleteBlogs(@RequestBody BlogModel[] blogModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into blogs_table (blogType, blogDate, blogTitle, blogUrl) values (?,?,?,?)";
+		String query = "delete from blogs_table where blogId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		for (int i = 0; i < blogModel.size(); i++) {
-			myStmt.setInt(1, blogModel.get(i).getBlogId());
+		for (int i = 0; i < blogModel.length; i++) {
+			myStmt.setInt(1, blogModel[i].getBlogId());
 			myStmt.addBatch();
 		}
 
@@ -101,19 +329,20 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/addBlog")
 	public ResponseEntity<Object> addBlog(@RequestBody BlogModel blogModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "insert into blogs_table (blogType, blogDate, blogTitle, blogUrl) values (?,?,?,?)";
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setString(1, blogModel.getBlogType());
 		myStmt.setTimestamp(2, blogModel.getBlogDate());
 		myStmt.setString(3, blogModel.getBlogTitle());
 		myStmt.setString(4, blogModel.getBlogUrl());
 
-		myStmt.executeQuery();
+		myStmt.executeUpdate();
 		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
 		while (slotsGeneratedKeys.next()) {
 			blogModel.setBlogId(slotsGeneratedKeys.getInt(1));
@@ -122,16 +351,21 @@ public class UserController {
 
 		JSONObject json = new JSONObject();
 		json.put("blog", blogModel);
-
+		Gson gson = new Gson();
+		String blogModelJson = gson.toJson(blogModel);
+		JsonObject jsonObject = JsonParser.parseString(blogModelJson).getAsJsonObject();
+		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
+				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 		messagingTemplate.convertAndSend("/topic/blogs/", json.toString());
 
 		jsonResponse.put("message", "Blog Created Successfully");
-		jsonResponse.put("blog", blogModel);
+		jsonResponse.put("blog", jsonReturned);
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 
+	// passed
 	@GetMapping("/getBlogs/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getBlogs(@PathVariable("pageNumber") int pageNumber,
 			@PathVariable("recordsByPage") int recordsByPage)
@@ -148,11 +382,11 @@ public class UserController {
 			JSONObject json = new JSONObject();
 			json.put("blogId", myRs.getInt("blogId"));
 
-			json.put("businessAccountId", myRs.getString("blogType"));
-			json.put("slotDate", myRs.getTimestamp("blogDate"));
+			json.put("blogType", myRs.getString("blogType"));
+			json.put("blogDate", myRs.getTimestamp("blogDate"));
 
-			json.put("biography", myRs.getString("blogTitle"));
-			json.put("clinicLocation", myRs.getString("blogUrl"));
+			json.put("blogTitle", myRs.getString("blogTitle"));
+			json.put("blogUrl", myRs.getString("blogUrl"));
 
 			jsonArray.put(json);
 		}
@@ -166,6 +400,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getNotifications/{pageNumber}/{recordsByPage}/{userFk}")
 	public ResponseEntity<Object> getNotifications(@PathVariable("pageNumber") int pageNumber,
 			@PathVariable("recordsByPage") int recordsByPage, @PathVariable(name = "userFk") int userFk)
@@ -180,7 +415,7 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
 		}
 
-		query = "select * from notifications_table nt join users_table ut on ut.userId=cpt.userFromFk where nt.userToFk=? ";
+		query = "select * from notifications_table nt join users_table ut on ut.userId=nt.userFromFk where nt.userToFk=? ";
 
 		query += " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
@@ -210,15 +445,16 @@ public class UserController {
 
 	}
 
-	@PostMapping("/deleteNotification")
-	public ResponseEntity<Object> deleteNotification(@RequestBody List<NotificationsModel> notificationModel)
+	// passed
+	@DeleteMapping("/deleteNotifications")
+	public ResponseEntity<Object> deleteNotifications(@RequestBody NotificationsModel[] notificationModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "delete from notifications_table where notificationId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		for (int i = 0; i < notificationModel.size(); i++) {
-			myStmt.setInt(1, notificationModel.get(i).getNotificationId());
+		for (int i = 0; i < notificationModel.length; i++) {
+			myStmt.setInt(1, notificationModel[i].getNotificationId());
 			myStmt.addBatch();
 		}
 
@@ -226,8 +462,7 @@ public class UserController {
 
 		myStmt.close();
 
-		jsonResponse.put("message", "Notifications Updated Successfully");
-		jsonResponse.put("notifications", notificationModel);
+		jsonResponse.put("message", "Notifications Deleted Successfully");
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
@@ -252,16 +487,17 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/updateNotification")
-	public ResponseEntity<Object> updateNotification(@RequestBody List<NotificationsModel> notificationModel)
+	public ResponseEntity<Object> updateNotification(@RequestBody NotificationsModel[] notificationModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update notifications_table set isOpen=? where notificationId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		for (int i = 0; i < notificationModel.size(); i++) {
-			myStmt.setBoolean(1, notificationModel.get(i).getIsOpen());
-			myStmt.setInt(2, notificationModel.get(i).getNotificationId());
+		for (int i = 0; i < notificationModel.length; i++) {
+			myStmt.setBoolean(1, notificationModel[i].getIsOpen());
+			myStmt.setInt(2, notificationModel[i].getNotificationId());
 			myStmt.addBatch();
 		}
 
@@ -270,7 +506,6 @@ public class UserController {
 		myStmt.close();
 
 		jsonResponse.put("message", "Notifications Updated Successfully");
-		jsonResponse.put("notifications", notificationModel);
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
@@ -313,6 +548,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/contactUs")
 	public ResponseEntity<Object> contactUs(@RequestBody ContactUsModel contactUsModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -330,8 +566,13 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				contactUsModel.setContactId(id);
+				Gson gson = new Gson();
+				String contactUsModelJson = gson.toJson(contactUsModel);
+				JsonObject jsonObject = JsonParser.parseString(contactUsModelJson).getAsJsonObject();
+				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 				jsonResponse.put("message", "Message Sent successfully");
-				jsonResponse.put("feedbacks", contactUsModel);
+				jsonResponse.put("feedbacks", jsonReturned);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -342,6 +583,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/postponeAppointment")
 	public ResponseEntity<Object> postponeAppointment(@RequestBody PostponeAppointmentModel postponeAppointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -350,8 +592,9 @@ public class UserController {
 		String query = "update appointments_table set slotFk=?, isApproved=0 where appointmentId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, postponeAppointmentModel.getSlotFk());
 
-		myStmt.setInt(1, postponeAppointmentModel.getAppointmentId());
+		myStmt.setInt(2, postponeAppointmentModel.getAppointmentId());
 		myStmt.executeUpdate();
 
 		JSONObject json = new JSONObject();
@@ -369,6 +612,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/updateUser")
 	public ResponseEntity<Object> updateUser(@RequestBody UserModel userModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -383,7 +627,6 @@ public class UserController {
 		myStmt.setInt(4, userModel.getUserId());
 		myStmt.executeUpdate();
 		jsonResponse.put("message", "User Updated successfully");
-		jsonResponse.put("subscription", userModel);
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
 
@@ -391,6 +634,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/subscribe")
 	public ResponseEntity<Object> subscribe(@RequestBody SubscriptionModel subscriptionModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -407,8 +651,13 @@ public class UserController {
 				if (generatedKeys.next()) {
 					int id = generatedKeys.getInt(1);
 					subscriptionModel.setSubscriptionId(id);
+					Gson gson = new Gson();
+					String subscriptionModelJson = gson.toJson(subscriptionModel);
+					JsonObject jsonObject = JsonParser.parseString(subscriptionModelJson).getAsJsonObject();
+					JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
+							Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 					jsonResponse.put("message", "Subscription Added successfully");
-					jsonResponse.put("subscription", subscriptionModel);
+					jsonResponse.put("subscription", jsonReturned);
 					jsonResponse.put("responseCode", 200);
 					myStmt.close();
 
@@ -426,6 +675,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteSubscription/{userEmail}")
 	public ResponseEntity<Object> deleteSubscription(@PathVariable("userEmail") String userEmail)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -456,7 +706,8 @@ public class UserController {
 
 	}
 
-	@DeleteMapping("/deleteCommunityPostComment")
+	// passed
+	@DeleteMapping("/deleteCommunityPostComment/{commentId}")
 	public ResponseEntity<Object> deleteCommunityPostComment(@PathVariable("commentId") int commentId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -482,6 +733,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/updateCommunityPostComment")
 	public ResponseEntity<Object> updateCommunityPostComment(
 			@RequestBody CommunityPostCommentModel communityPostCommentModel)
@@ -501,9 +753,13 @@ public class UserController {
 		json.put("communityPostComment", communityPostCommentModel);
 
 		messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
-
+		Gson gson = new Gson();
+		String communityPostCommentModelJson = gson.toJson(communityPostCommentModel);
+		JsonObject jsonObject = JsonParser.parseString(communityPostCommentModelJson).getAsJsonObject();
+		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
+				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 		jsonResponse.put("message", "Comment Updated successfully");
-		jsonResponse.put("Comment", communityPostCommentModel);
+		jsonResponse.put("Comment", jsonReturned);
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
 
@@ -511,6 +767,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getCommunityPostComment/{postId}/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getCommunityPostComment(@PathVariable("postId") int postId,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
@@ -525,7 +782,7 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
 		}
 
-		query = "select * from posts_comments_table pct join users_table ut on ut.userId=pct.userFk  where postId=? limit "
+		query = "select * from posts_comments_table pct join users_table ut on ut.userId=pct.userFk  where postFk=? order by commentId DESC limit "
 				+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -554,12 +811,13 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/addCommunityPostComment")
 	public ResponseEntity<Object> addCommunityPostComment(
 			@RequestBody CommunityPostCommentModel communityPostCommentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into posts_comments_table (userFk, postFk, commentDescription) values(?,?, ?,?)";
+		String query = "insert into posts_comments_table (userFk, postFk, commentDescription) values(?,?, ?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setInt(1, communityPostCommentModel.getUserFk());
@@ -577,9 +835,13 @@ public class UserController {
 				json.put("communityPostComment", communityPostCommentModel);
 
 				messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
-
+				Gson gson = new Gson();
+				String communityPostCommentModelJson = gson.toJson(communityPostCommentModel);
+				JsonObject jsonObject = JsonParser.parseString(communityPostCommentModelJson).getAsJsonObject();
+				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 				jsonResponse.put("message", "Comment Added successfully");
-				jsonResponse.put("post", communityPostCommentModel);
+				jsonResponse.put("post", jsonReturned);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -590,11 +852,14 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getCommunityPosts/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getCommunityPosts(@PathVariable("pageNumber") int pageNumber,
 			@PathVariable("recordsByPage") int recordsByPage,
 			@PathVariable(name = "searchText", required = false) String searchText)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		searchText = searchText.equals("null") ? null : searchText;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from community_posts_table";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -638,19 +903,18 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/registerAppointment")
 	public ResponseEntity<Object> registerAppointment(@RequestBody AppointmentModel appointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk, appointmentActualStartTime, ,appointmentActualEndTime) values(?,?, ?,?,?,?)";
+		String query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setInt(1, appointmentModel.getSlotFk());
 		myStmt.setInt(2, appointmentModel.getBusinessAccountFk());
 		myStmt.setInt(3, appointmentModel.getUserFk());
 		myStmt.setInt(4, appointmentModel.getServiceFk());
-		myStmt.setTimestamp(5, appointmentModel.getAppointmentActualStartTime());
-		myStmt.setTimestamp(6, appointmentModel.getAppointmentActualEndTime());
 
 		myStmt.executeUpdate();
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
@@ -664,9 +928,13 @@ public class UserController {
 
 				messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
 						json.toString());
-
+				Gson gson = new Gson();
+				String appointmentJson = gson.toJson(appointmentModel);
+				JsonObject jsonObject = JsonParser.parseString(appointmentJson).getAsJsonObject();
+				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 				jsonResponse.put("message", "Appointment Added successfully");
-				jsonResponse.put("appointment", appointmentModel);
+				jsonResponse.put("appointment", jsonReturned);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -677,22 +945,29 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/updateAppointment")
 	public ResponseEntity<Object> updateAppointment(
 
 			@RequestBody AppointmentModel appointmentModel) throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "update appointments_table set appointmentActualStartTime=?, appointmentActualEndTime=?, appointmentStatus=?, isApproved=?, isCancelled=?, cancelledBy=? where appointmentId=?";
+		String query = "update appointments_table set appointmentActualStartTime=?, appointmentActualEndTime=?, appointmentStatus=?, isApproved=?, isCancelled=? "
+				+ (appointmentModel.getCancelledBy() != null ? " ,cancelledBy=? " : " ") + " where appointmentId=?";
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 
 		myStmt.setTimestamp(1, appointmentModel.getAppointmentActualStartTime());
 		myStmt.setTimestamp(2, appointmentModel.getAppointmentActualEndTime());
 		myStmt.setString(3, appointmentModel.getAppointmentStatus().toString());
 		myStmt.setBoolean(4, appointmentModel.getIsApproved());
 		myStmt.setBoolean(5, appointmentModel.getIsCancelled());
-		myStmt.setString(6, appointmentModel.getCancelledBy().toString());
-		myStmt.setInt(7, appointmentModel.getAppointmentId());
+		if (appointmentModel.getCancelledBy() != null) {
+			myStmt.setString(6, appointmentModel.getCancelledBy().toString());
+			myStmt.setInt(7, appointmentModel.getAppointmentId());
+		} else {
+			myStmt.setInt(6, appointmentModel.getAppointmentId());
+
+		}
 
 		myStmt.executeUpdate();
 		ResultSet generatedKeys = myStmt.getGeneratedKeys();
@@ -732,8 +1007,8 @@ public class UserController {
 			}
 
 		}
+
 		jsonResponse.put("message", "Appointment Updated successfully");
-		jsonResponse.put("appointment", appointmentModel);
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
 
@@ -741,6 +1016,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/addCommunityPost")
 	public ResponseEntity<Object> addCommunityPost(@RequestBody CommunityPostModel communityPostModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -748,9 +1024,9 @@ public class UserController {
 		String query = "insert into community_posts_table (userFk, postService, postDescription) values(?, ?,?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
-		myStmt.setInt(2, communityPostModel.getUserFk());
-		myStmt.setString(3, communityPostModel.getPostService());
-		myStmt.setString(4, communityPostModel.getPostDescription());
+		myStmt.setInt(1, communityPostModel.getUserFk());
+		myStmt.setString(2, communityPostModel.getPostService());
+		myStmt.setString(3, communityPostModel.getPostDescription());
 
 		myStmt.executeUpdate();
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
@@ -763,9 +1039,13 @@ public class UserController {
 				json.put("communityPost", communityPostModel);
 
 				messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
-
+				Gson gson = new Gson();
+				String communityPostJson = gson.toJson(communityPostModel);
+				JsonObject jsonObject = JsonParser.parseString(communityPostJson).getAsJsonObject();
+				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 				jsonResponse.put("message", "Post Added successfully");
-				jsonResponse.put("post", communityPostModel);
+				jsonResponse.put("post", jsonReturned);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -776,6 +1056,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/updateCommunityPost")
 	public ResponseEntity<Object> updateCommunityPost(@RequestBody CommunityPostModel communityPostModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -789,15 +1070,20 @@ public class UserController {
 		myStmt.setInt(3, communityPostModel.getPostId());
 
 		myStmt.executeUpdate();
+		Gson gson = new Gson();
+		String communityPostJson = gson.toJson(communityPostModel);
+		JsonObject jsonObject = JsonParser.parseString(communityPostJson).getAsJsonObject();
+		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
+				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 
 		JSONObject json = new JSONObject();
 		json.put("type", "UPDATE");
-		json.put("communityPost", communityPostModel);
+		json.put("communityPost", jsonReturned);
 
 		messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
 
 		jsonResponse.put("message", "Post Updated successfully");
-		jsonResponse.put("post", communityPostModel);
+		jsonResponse.put("post", jsonReturned);
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
 
@@ -805,6 +1091,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteCommunityPost/{postId}")
 	public ResponseEntity<Object> deleteCommunityPost(@PathVariable("postId") int postId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -830,6 +1117,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getFavorites/{userFk}/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getFavorites(@PathVariable("userFk") int userFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
@@ -878,6 +1166,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/addFavorite")
 	public ResponseEntity<Object> addFavorite(@RequestBody FavoriteModel favoriteModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -893,8 +1182,13 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				favoriteModel.setFavoriteId(id);
+				Gson gson = new Gson();
+				String favoriteJson = gson.toJson(favoriteModel);
+				JsonObject jsonObject = JsonParser.parseString(favoriteJson).getAsJsonObject();
+				JSONObject json = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 				jsonResponse.put("message", "Favorite Added successfully");
-				jsonResponse.put("favorite", favoriteModel);
+				jsonResponse.put("favorite", json);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -905,11 +1199,12 @@ public class UserController {
 
 	}
 
-	@PostMapping("/addFeedback/")
+	// passed
+	@PostMapping("/addFeedback")
 	public ResponseEntity<Object> addFeedback(@RequestBody FeedbackModel feedbackModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into feedback_table (businessAccountFk, userFk,feedbackDescription) values(?,?,?)";
+		String query = "insert into feedbacks_table (businessAccountFk, userFk,feedbackDescription) values(?,?,?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setInt(1, feedbackModel.getBusinessAccountFk());
@@ -924,10 +1219,16 @@ public class UserController {
 				JSONObject json = new JSONObject();
 				json.put("type", "ADD");
 				json.put("feedback", feedbackModel);
-
 				messagingTemplate.convertAndSend("/topic/feedbacks/", json.toString());
+
+				Gson gson = new Gson();
+				String feedbackJson = gson.toJson(feedbackModel);
+				JsonObject jsonObject = JsonParser.parseString(feedbackJson).getAsJsonObject();
+				json = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+
 				jsonResponse.put("message", "Favorite Added successfully");
-				jsonResponse.put("feedbacks", feedbackModel);
+				jsonResponse.put("feedbacks", json);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -938,11 +1239,12 @@ public class UserController {
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteFeedback/{feedbackId}")
 	public ResponseEntity<Object> deleteFeedback(@PathVariable("feedbackId") int feedbackId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "delete from feedback_table where favoriteId=?";
+		String query = "delete from feedbacks_table where feedbackId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, feedbackId);
@@ -962,6 +1264,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteFavorite/{favoriteId}")
 	public ResponseEntity<Object> deleteFavorite(@PathVariable("favoriteId") int favoriteId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -978,11 +1281,14 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getAllFeedbacks/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getAllFeedbacks(@PathVariable("pageNumber") int pageNumber,
 			@PathVariable("recordsByPage") int recordsByPage,
 			@PathVariable(name = "searchText", required = false) String searchText)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		searchText = searchText.equals("null") ? null : searchText;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from feedbacks_table";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -993,7 +1299,7 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
 		}
 
-		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk ";
+		query = "select f.feedbackDescription,f.feedbackId, bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk ";
 		if (searchText != null) {
 			query += " where f.feedbackDescription LIKE '%" + searchText + "%'";
 		}
@@ -1005,6 +1311,9 @@ public class UserController {
 		JSONArray jsonArray = new JSONArray();
 		while (myRs.next()) {
 			JSONObject json = new JSONObject();
+			json.put("feedbackDescription", myRs.getString("feedbackDescription"));
+			json.put("feedbackId", myRs.getInt("feedbackId"));
+
 			json.put("biography", myRs.getString("biography"));
 			json.put("clinicLocation", myRs.getString("clinicLocation"));
 			json.put("clinicLocationLongitude", myRs.getFloat("clinicLocationLongitude"));
@@ -1028,11 +1337,14 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getUserFeedbacks/{userFk}/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getUserFeedbacks(@PathVariable("userFk") int userFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
 			@PathVariable(name = "searchText", required = false) String searchText)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		searchText = searchText.equals("null") ? null : searchText;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from feedbacks_table where userFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1080,6 +1392,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/addReservationSlot")
 	public ResponseEntity<Object> addReservationSlot(@RequestBody ReservationSlot reservationSlot)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1095,8 +1408,13 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				reservationSlot.setReservationId(id);
+				Gson gson = new Gson();
+				String reservationSlotJson = gson.toJson(reservationSlot);
+				JsonObject jsonObject = JsonParser.parseString(reservationSlotJson).getAsJsonObject();
+				JSONObject json = new JSONObject(jsonObject.entrySet().stream().collect(
+						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 				jsonResponse.put("message", "Reservation Added successfully");
-				jsonResponse.put("reservation", reservationSlot);
+				jsonResponse.put("reservation", json);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
 
@@ -1107,6 +1425,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteReservationSlot/{reservationId}")
 	public ResponseEntity<Object> deleteReservationSlot(@PathVariable("reservationId") int reservationId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1125,6 +1444,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@GetMapping("/getReservationSlots/{userFk}")
 	public ResponseEntity<Object> getReservationSlots(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1168,6 +1488,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/forgetPassword")
 	public ResponseEntity<Object> forgetPassword(@RequestBody UserModel user)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1188,6 +1509,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/updatePassword")
 	public ResponseEntity<Object> updatePassword(@RequestBody UpdatePasswordModel updatePasswordModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1295,26 +1617,36 @@ public class UserController {
 		return null;
 	}
 
+	// passed
 	@PostMapping("/loginUser")
 	public ResponseEntity<Object> loginUser(@RequestBody UserModel user)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		UserModel userReturned = isUserExist(user);
 		JSONObject jsonResponse = new JSONObject();
+		JSONObject userJson = new JSONObject();
 
 		if (userReturned == null) {
 			jsonResponse.put("message", "User Doesnot Exist");
 			jsonResponse.put("responseCode", -1);
 			return ResponseEntity.ok(jsonResponse.toString());
+		} else {
+			userJson.put("userId", userReturned.getUserId());
+			userJson.put("firstName", userReturned.getFirstName());
+			userJson.put("lastName", userReturned.getLastName());
+			userJson.put("userEmail", userReturned.getUserEmail());
+			userJson.put("userRole", userReturned.getUserRole());
+			userJson.put("userLanguage", userReturned.getUserLanguage());
+			userJson.put("profilePicture", userReturned.getProfilePicture());
 		}
-		if (userReturned.isLocked()) {
+		if (userReturned.getIsLocked()) {
 			jsonResponse.put("message", "User is locked");
 			jsonResponse.put("responseCode", -1);
 
 		} else {
 			if (userReturned.getUserRole() != UserRoles.HEALTH_PROFESSIONAL) {
-				if (userReturned.isVerified()) {
+				if (userReturned.getIsVerified()) {
 					jsonResponse.put("message", "Welcome back");
-					jsonResponse.put("user", userReturned);
+					jsonResponse.put("user", userJson);
 					jsonResponse.put("responseCode", 200);
 
 				} else {
@@ -1323,10 +1655,10 @@ public class UserController {
 
 				}
 			} else {
-				if (userReturned.isVerified()) {
-					if (userReturned.isApproved()) {
+				if (userReturned.getIsVerified()) {
+					if (userReturned.getIsApproved()) {
 						jsonResponse.put("message", "Welcome back");
-						jsonResponse.put("user", userReturned);
+						jsonResponse.put("user", userJson);
 						jsonResponse.put("responseCode", 200);
 
 					} else {
@@ -1346,28 +1678,37 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/generateToken/{tokenType}")
 	public ResponseEntity<Object> generateToken(@RequestBody UserModel user,
 			@PathVariable("tokenType") String tokenType) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "insert into "
 				+ (tokenType.equals(TokenType.REGISTRATION.toString()) ? "tokens_table" : "password_tokens_table")
-				+ "(userFk, tokenValue) values ( ?, ?)";
+				+ "(userFk, tokenValue, expiryDate) values ( ?, ?,?)";
 
 		String randomToken = CommonFunctions.generateToken();
+		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(timestamp);
+		cal.add(Calendar.MINUTE, 5);
+		Timestamp newTimestamp = new Timestamp(cal.getTimeInMillis());
+
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, user.getUserId());
 		myStmt.setString(2, randomToken);
+		myStmt.setTimestamp(3, newTimestamp);
+
 		myStmt.executeUpdate();
 		myStmt.close();
 
 		jsonResponse.put("message", "Check your email");
-		jsonResponse.put("user", user);
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 
+	// passed
 	@PostMapping("/verifyUser/{userId}")
 	public ResponseEntity<Object> verifyUser(@PathVariable("userId") int userId) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
@@ -1384,6 +1725,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/approveUser/{userId}")
 	public ResponseEntity<Object> approveUser(@PathVariable("userId") int userId) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
@@ -1400,6 +1742,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/checkToken/{tokenType}")
 	public ResponseEntity<Object> checkToken(@RequestBody TokenModel token, @PathVariable("tokenType") String tokenType)
 			throws SQLException, IOException {
@@ -1435,6 +1778,7 @@ public class UserController {
 
 	}
 
+	// passed
 	@PostMapping("/registerUser")
 	public ResponseEntity<Object> registerUser(@RequestBody UserModel user)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1446,9 +1790,10 @@ public class UserController {
 			return ResponseEntity.ok(jsonResponse.toString());
 		}
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"insert into users_table (firstName, lastName, userEmail, password, userRole, userLanguage, profilePicture) values ( ?, ?, ?, ?, ?, ?, ?)",
+				"insert into users_table (firstName, lastName, userEmail, password, userRole, userLanguage, profilePicture, registrationDate) values ( ?,?, ?, ?, ?, ?, ?, ?)",
 				Statement.RETURN_GENERATED_KEYS);
 		String hashedPassword = PasswordUtils.hashPassword(user.getPassword());
+		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 
 		myStmt.setString(1, user.getFirstName());
 		myStmt.setString(2, user.getLastName());
@@ -1457,7 +1802,8 @@ public class UserController {
 		myStmt.setString(5, user.getUserRole().toString());
 		myStmt.setString(6, user.getUserLanguage());
 		myStmt.setString(7, user.getProfilePicture());
-
+		myStmt.setTimestamp(8, timestamp);
+		user.setRegistrationDate(timestamp);
 		myStmt.executeUpdate();
 
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {

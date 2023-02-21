@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -30,6 +31,9 @@ import com.example.meditouch.DatabaseConnection;
 import com.example.meditouch.TimestampDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import Enums.NotificationType;
 import models.AppointmentPrescriptionModel;
@@ -38,6 +42,7 @@ import models.AppointmentResultModel;
 import models.BlockModel;
 import models.BusinessAccountModel;
 import models.BusinessAccountScheduleModel;
+import models.BusinessAccountScheduleSlotModel;
 import models.GlobalSearchModel;
 import models.NotificationsModel;
 import models.ServiceModel;
@@ -122,7 +127,7 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> addNotification(@RequestBody List<NotificationsModel> notificationModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into notifications_table (userToFk, userFromFk,notificationText, notificationType, appointmentFk, commentFk, ,promoCodeFk, referralFk, favoriteFk) values(?,?,?,?,?,?,?,?,?)";
+		String query = "insert into notifications_table (userToFk, userFromFk, notificationText, notificationType, appointmentFk, commentFk, promoCodeFk, referralFk, favoriteFk, appointmentResultFk) values (?,?,?,?,?,?,?,?,?,?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		for (int i = 0; i < notificationModel.size(); i++) {
@@ -135,6 +140,8 @@ public class BusinessAccountController {
 			myStmt.setInt(7, notificationModel.get(i).getPromoCodeFk());
 			myStmt.setInt(8, notificationModel.get(i).getReferralFk());
 			myStmt.setInt(9, notificationModel.get(i).getFavoriteFk());
+			myStmt.setInt(10, notificationModel.get(i).getFavoriteFk());
+
 			myStmt.addBatch();
 
 		}
@@ -147,7 +154,7 @@ public class BusinessAccountController {
 			i++;
 		}
 		myStmt.close();
-
+		notificationModel.clear();
 		jsonResponse.put("message", "Notifications Added Successfully");
 		jsonResponse.put("services", notificationModel);
 		jsonResponse.put("responseCode", 200);
@@ -228,7 +235,7 @@ public class BusinessAccountController {
 			json.put("message", message);
 			json.put("appointmentResultId", appointmentResultId);
 			NotificationsModel notification = new NotificationsModel(false, -1, userFk, userFromFk, message,
-					NotificationType.RESERVED_APPOINTMENT, appointmentResultId, -1, -1, -1, -1);
+					NotificationType.APPOINTMENT_RESULT, -1, -1, -1, -1, -1, appointmentResultId);
 			notificationModel.add(notification);
 			addNotification(notificationModel);
 			notificationModel.clear();
@@ -306,7 +313,8 @@ public class BusinessAccountController {
 	}
 
 	@PostMapping("/addAppointmentPrescription")
-	public ResponseEntity<Object> addAppointmentPrescription(AppointmentPrescriptionModel appointmentPrescriptionModel)
+	public ResponseEntity<Object> addAppointmentPrescription(
+			@RequestBody AppointmentPrescriptionModel appointmentPrescriptionModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 
@@ -327,7 +335,7 @@ public class BusinessAccountController {
 
 		// send notification to the user
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"select *, bat.userFk as userFromFk from appointments_table ap join business_account_schedule_slots_table basst on basst.slotId=ap.slotFk join business_account_table bat on bat.businessAccountId = ap.businessAccountFk join users_table ut on ut.userId=bat.userFk where ap.appointmentFk=?");
+				"select *, bat.userFk as userFromFk from appointments_table ap join business_account_schedule_slots_table basst on basst.slotId=ap.slotFk join business_account_table bat on bat.businessAccountId = ap.businessAccountFk join users_table ut on ut.userId=bat.userFk where ap.appointmentId=?");
 		myStmt.setInt(1, appointmentPrescriptionModel.getAppointmentFk());
 		ResultSet myRs = myStmt.executeQuery();
 		while (myRs.next()) {
@@ -345,7 +353,7 @@ public class BusinessAccountController {
 			json.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
 
 			NotificationsModel notification = new NotificationsModel(false, -1, userFk, userFromFk, message,
-					NotificationType.RESERVED_APPOINTMENT, prescriptionId, -1, -1, -1, -1);
+					NotificationType.RESERVED_APPOINTMENT, prescriptionId, -1, -1, -1, -1, -1);
 			notificationModel.add(notification);
 			addNotification(notificationModel);
 			notificationModel.clear();
@@ -354,21 +362,26 @@ public class BusinessAccountController {
 		}
 
 		myStmt.close();
-
+		Gson gson = new Gson();
+		String appointmentPrescriptionModelJson = gson.toJson(appointmentPrescriptionModel);
+		JsonObject jsonObject = JsonParser.parseString(appointmentPrescriptionModelJson).getAsJsonObject();
+		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
+				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
 		jsonResponse.put("message", "Appointment Prescription Result Successfully");
-		jsonResponse.put("result", appointmentPrescriptionModel);
+		jsonResponse.put("result", jsonReturned);
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 
+	// passed
 	@DeleteMapping("/deleteService/{serviceId}")
 	public ResponseEntity<Object> deleteService(@PathVariable("serviceId") int serviceId)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
-				.prepareStatement("delete from business_account_services_table where serviceId=?");
+				.prepareStatement("delete from business_accounts_services_table where serviceId=?");
 
 		myStmt.setInt(1, serviceId);
 
@@ -380,19 +393,21 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@PostMapping("/addService")
-	public ResponseEntity<Object> addService(List<ServiceModel> serviceModel) throws SQLException, IOException {
+	public ResponseEntity<Object> addService(@RequestBody ServiceModel[] serviceModel)
+			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
 				"insert into business_accounts_services_table (businessAccountFk, servicePrice, serviceName, currencyUnit) values ( ?,?,?, ?)",
 				Statement.RETURN_GENERATED_KEYS);
 
-		for (int i = 0; i < serviceModel.size(); i++) {
-			myStmt.setInt(1, serviceModel.get(i).getBusinessAccountFk());
-			myStmt.setDouble(2, serviceModel.get(i).getServicePrice());
-			myStmt.setString(3, serviceModel.get(i).getServiceName());
-			myStmt.setString(4, serviceModel.get(i).getCurrencyUnit().toString());
+		for (int i = 0; i < serviceModel.length; i++) {
+			myStmt.setInt(1, serviceModel[i].getBusinessAccountFk());
+			myStmt.setDouble(2, serviceModel[i].getServicePrice());
+			myStmt.setString(3, serviceModel[i].getServiceName());
+			myStmt.setString(4, serviceModel[i].getCurrencyUnit().toString());
 
 			myStmt.addBatch();
 		}
@@ -400,7 +415,7 @@ public class BusinessAccountController {
 		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
 		int i = 0;
 		while (slotsGeneratedKeys.next()) {
-			serviceModel.get(i).setServiceId(slotsGeneratedKeys.getInt(1));
+			serviceModel[i].setServiceId(slotsGeneratedKeys.getInt(1));
 			i++;
 		}
 		myStmt.close();
@@ -412,18 +427,20 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@PostMapping("/updateService")
-	public ResponseEntity<Object> updateService(List<ServiceModel> serviceModel) throws SQLException, IOException {
+	public ResponseEntity<Object> updateService(@RequestBody ServiceModel[] serviceModel)
+			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"update business_accounts_services_table set servicePrice = ? , serviceName = ? , servicePriceUnit =? values where serviceId=?");
+				"update business_accounts_services_table set servicePrice = ? , serviceName = ? , currencyUnit =? where serviceId=?");
 
-		for (int i = 0; i < serviceModel.size(); i++) {
-			myStmt.setDouble(1, serviceModel.get(i).getServicePrice());
-			myStmt.setString(2, serviceModel.get(i).getServiceName());
-			myStmt.setString(3, serviceModel.get(i).getCurrencyUnit().toString());
-			myStmt.setInt(4, serviceModel.get(i).getServiceId());
+		for (int i = 0; i < serviceModel.length; i++) {
+			myStmt.setDouble(1, serviceModel[i].getServicePrice());
+			myStmt.setString(2, serviceModel[i].getServiceName());
+			myStmt.setString(3, serviceModel[i].getCurrencyUnit().toString());
+			myStmt.setInt(4, serviceModel[i].getServiceId());
 
 			myStmt.addBatch();
 		}
@@ -438,6 +455,7 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@GetMapping("/getBlockedUsers/{businessAccountFk}/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getBlockedUsers(@PathVariable("businessAccountFk") int businessAccountFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
@@ -485,8 +503,9 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@PostMapping("/blockUser")
-	public ResponseEntity<Object> blockUser(BlockModel blockModel) throws SQLException, IOException {
+	public ResponseEntity<Object> blockUser(@RequestBody BlockModel blockModel) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -500,9 +519,13 @@ public class BusinessAccountController {
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
-				blockModel.setBlockId(id);
+				JSONObject json = new JSONObject();
+				json.put("blockId", id);
+				json.put("businessAccountFk", blockModel.getBusinessAccountFk());
+				json.put("userFk", blockModel.getUserFk());
+
 				jsonResponse.put("message", "User Blocked successfully");
-				jsonResponse.put("blockInfo", blockModel);
+				jsonResponse.put("blockInfo", json);
 
 				jsonResponse.put("responseCode", 200);
 				return ResponseEntity.ok(jsonResponse.toString());
@@ -513,7 +536,8 @@ public class BusinessAccountController {
 
 	}
 
-	@DeleteMapping("/blockUser/{blockId}")
+	// passed
+	@DeleteMapping("/removeBlockUser/{blockId}")
 	public ResponseEntity<Object> removeBlockUser(@PathVariable("blockId") int blockId)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
@@ -531,6 +555,7 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	public static void registerBusinessAccount(BusinessAccountModel businessAccountModel)
 			throws SQLException, IOException {
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -547,6 +572,7 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@PostMapping("/updateBusinessAccount")
 	public ResponseEntity<Object> updateBusinessAccount(@RequestBody BusinessAccountModel businessAccountModel)
 			throws SQLException, IOException {
@@ -578,6 +604,7 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@GetMapping("/getBusinessAccount/{userFk}")
 	public ResponseEntity<Object> getBusinessAccount(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -599,13 +626,10 @@ public class BusinessAccountController {
 			json.put("clinicLocationLongitude", myRs.getFloat("clinicLocationLongitude"));
 			json.put("clinicLocationLatitude", myRs.getFloat("clinicLocationLatitude"));
 
-			BusinessAccountModel businessAccountReturned = mapper.readValue(json.toString(),
-					BusinessAccountModel.class);
-
 			myRs.close();
 			myStmt.close();
 			jsonResponse.put("message", "Success account");
-			jsonResponse.put("businessAccount", businessAccountReturned);
+			jsonResponse.put("businessAccount", json);
 			jsonResponse.put("responseCode", 200);
 			return ResponseEntity.ok(jsonResponse.toString());
 		}
@@ -614,6 +638,7 @@ public class BusinessAccountController {
 		return null;
 	}
 
+	// passed
 	public int getScheduleId(int businessAccountId) throws SQLException, IOException {
 		int scheduleId = -1;
 		String query = "select scheduleId from business_account_schedule_table where businessAccountFk=?";
@@ -641,6 +666,7 @@ public class BusinessAccountController {
 
 	}
 
+	// passed
 	@GetMapping("/getBusinessAccountSchedule/{businessAccountId}/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getBusinessAccountSchedule(@PathVariable("businessAccountId") int businessAccountId,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
@@ -716,11 +742,25 @@ public class BusinessAccountController {
 		return false;
 	}
 
+	// passed
 	@DeleteMapping("/deleteSchedule/{businessAccountFk}")
 	public ResponseEntity<Object> deleteSchedule(@PathVariable("businessAccountFk") int businessAccountFk)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "delete from business_account_schedule_table where businessAccountFk=?";
+		String query = "select scheduleId from business_account_schedule_table where businessAccountFk=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		int scheduleId = -1;
+		myStmt.setInt(1, businessAccountFk);
+		ResultSet rs = myStmt.executeQuery();
+		while (rs.next()) {
+			scheduleId = rs.getInt("scheduleId");
+		}
+		query = "delete from business_account_schedule_slots_table where scheduleFk=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, scheduleId);
+		myStmt.executeUpdate();
+
+		query = "delete from business_account_schedule_table where businessAccountFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
 		myStmt.setInt(1, businessAccountFk);
@@ -732,9 +772,11 @@ public class BusinessAccountController {
 		return ResponseEntity.ok(jsonResponse.toString());
 	}
 
+	// passed
 	@PostMapping("/setSchedule/{businessAccountFk}")
 	public ResponseEntity<Object> setSchedule(@PathVariable("businessAccountFk") int businessAccountFk,
-			@RequestBody BusinessAccountScheduleModel businessAccountScheduleModel) throws SQLException, IOException {
+			@RequestBody BusinessAccountScheduleSlotModel[] businessAccountScheduleSlotModel)
+			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "";
 		try {
@@ -771,12 +813,12 @@ public class BusinessAccountController {
 			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query,
 					Statement.RETURN_GENERATED_KEYS);
 
-			for (int i = 0; i < businessAccountScheduleModel.getScheduleSlots().size(); i++) {
+			for (int i = 0; i < businessAccountScheduleSlotModel.length; i++) {
 				myStmt.setInt(1, scheduleId);
-				myStmt.setDate(2, businessAccountScheduleModel.getScheduleSlots().get(i).getSlotDate());
-				myStmt.setTimestamp(3, businessAccountScheduleModel.getScheduleSlots().get(i).getSlotStartTime());
-				myStmt.setTimestamp(4, businessAccountScheduleModel.getScheduleSlots().get(i).getSlotEndTime());
-				myStmt.setInt(5, businessAccountScheduleModel.getScheduleSlots().get(i).getServiceFk());
+				myStmt.setDate(2, businessAccountScheduleSlotModel[i].getSlotDate());
+				myStmt.setTimestamp(3, businessAccountScheduleSlotModel[i].getSlotStartTime());
+				myStmt.setTimestamp(4, businessAccountScheduleSlotModel[i].getSlotEndTime());
+				myStmt.setInt(5, businessAccountScheduleSlotModel[i].getServiceFk());
 
 				myStmt.addBatch();
 			}
@@ -784,13 +826,13 @@ public class BusinessAccountController {
 			ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
 			int i = 0;
 			while (slotsGeneratedKeys.next()) {
-				businessAccountScheduleModel.getScheduleSlots().get(i).setSlotId(slotsGeneratedKeys.getInt(1));
+				businessAccountScheduleSlotModel[i].setSlotId(slotsGeneratedKeys.getInt(1));
 				i++;
 			}
 			myStmt.close();
 
 			jsonResponse.put("message", "Schedule Created Successfully");
-			jsonResponse.put("schedule", businessAccountScheduleModel.getScheduleSlots());
+			jsonResponse.put("schedule", businessAccountScheduleSlotModel);
 			jsonResponse.put("responseCode", 200);
 			return ResponseEntity.ok(jsonResponse.toString());
 		} catch (Exception e) {
