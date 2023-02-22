@@ -8,19 +8,14 @@ public class NotificationsModel {
 	int userFromFk;
 	String notificationText;
 	NotificationType notificationType;
-	int appointmentFk;
-	int commentFk;
-	int promoCodeFk;
-	int referralFk;
-	int favoriteFk;
-	int appointmentResultFk;
+	String notificationUrl;
 
-	public int getAppointmentResultFk() {
-		return appointmentResultFk;
+	public String getNotificationUrl() {
+		return notificationUrl;
 	}
 
-	public void setAppointmentResultFk(int appointmentResultFk) {
-		this.appointmentResultFk = appointmentResultFk;
+	public void setNotificationUrl(String notificationUrl) {
+		this.notificationUrl = notificationUrl;
 	}
 
 	boolean isOpen;
@@ -37,9 +32,8 @@ public class NotificationsModel {
 	public String toString() {
 		return "{\"notificationId\":" + notificationId + ", \"userToFk\":" + userToFk + ", \"userFromFk\":" + userFromFk
 				+ ", \"notificationText\":\"" + notificationText + "\", \"notificationType\":\"" + notificationType
-				+ "\", \"appointmentFk\":" + appointmentFk + ", \"commentFk\":" + commentFk + ", \"promoCodeFk\":"
-				+ promoCodeFk + ", \"referralFk\":" + referralFk + ", \"favoriteFk\":" + favoriteFk + ",\"isOpen\":"
-				+ isOpen + ",\"appointmentResultFk\":" + appointmentResultFk + "}";
+				+ "\",\"notificationUrl\":\"" + notificationUrl + "\"}";
+
 	}
 
 	public NotificationsModel() {
@@ -47,20 +41,14 @@ public class NotificationsModel {
 	}
 
 	public NotificationsModel(boolean isOpen, int notificationId, int userToFk, int userFromFk, String notificationText,
-			NotificationType notificationType, int appointmentFk, int commentFk, int promoCodeFk, int referralFk,
-			int favoriteFk, int appointmentResultFk) {
+			NotificationType notificationType, String notificationUrl) {
 		super();
 		this.notificationId = notificationId;
 		this.userToFk = userToFk;
 		this.userFromFk = userFromFk;
 		this.notificationText = notificationText;
 		this.notificationType = notificationType;
-		this.appointmentFk = appointmentFk;
-		this.commentFk = commentFk;
-		this.appointmentResultFk = appointmentResultFk;
-		this.promoCodeFk = promoCodeFk;
-		this.referralFk = referralFk;
-		this.favoriteFk = favoriteFk;
+		this.notificationUrl = notificationUrl;
 		this.isOpen = isOpen;
 	}
 
@@ -104,43 +92,4 @@ public class NotificationsModel {
 		this.notificationType = notificationType;
 	}
 
-	public int getAppointmentFk() {
-		return appointmentFk;
-	}
-
-	public void setAppointmentFk(int appointmentFk) {
-		this.appointmentFk = appointmentFk;
-	}
-
-	public int getCommentFk() {
-		return commentFk;
-	}
-
-	public void setCommentFk(int commentFk) {
-		this.commentFk = commentFk;
-	}
-
-	public int getPromoCodeFk() {
-		return promoCodeFk;
-	}
-
-	public void setPromoCodeFk(int promoCodeFk) {
-		this.promoCodeFk = promoCodeFk;
-	}
-
-	public int getReferralFk() {
-		return referralFk;
-	}
-
-	public void setReferralFk(int referralFk) {
-		this.referralFk = referralFk;
-	}
-
-	public int getFavoriteFk() {
-		return favoriteFk;
-	}
-
-	public void setFavoriteFk(int favoriteFk) {
-		this.favoriteFk = favoriteFk;
-	}
 }

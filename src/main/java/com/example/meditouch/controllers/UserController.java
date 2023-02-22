@@ -468,6 +468,7 @@ public class UserController {
 
 	}
 
+	//passed
 	@DeleteMapping("/deleteAllNotifications/{userFk}")
 	public ResponseEntity<Object> deleteAllNotifications(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -515,7 +516,7 @@ public class UserController {
 	public ResponseEntity<Object> addNotification(@RequestBody List<NotificationsModel> notificationModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into notifications_table (userToFk, userFromFk,notificationText, notificationType, appointmentFk, commentFk, ,promoCodeFk, referralFk, favoriteFk) values(?,?,?,?,?,?,?,?,?)";
+		String query = "insert into notifications_table (userToFk, userFromFk,notificationText, notificationType, notificationUrl) values(?,?,?,?,?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		for (int i = 0; i < notificationModel.size(); i++) {
@@ -523,11 +524,8 @@ public class UserController {
 			myStmt.setInt(2, notificationModel.get(i).getUserToFk());
 			myStmt.setString(3, notificationModel.get(i).getNotificationText());
 			myStmt.setString(4, notificationModel.get(i).getNotificationType().toString());
-			myStmt.setInt(5, notificationModel.get(i).getAppointmentFk());
-			myStmt.setInt(6, notificationModel.get(i).getCommentFk());
-			myStmt.setInt(7, notificationModel.get(i).getPromoCodeFk());
-			myStmt.setInt(8, notificationModel.get(i).getReferralFk());
-			myStmt.setInt(9, notificationModel.get(i).getFavoriteFk());
+			myStmt.setString(5, notificationModel.get(i).getNotificationUrl());
+
 			myStmt.addBatch();
 
 		}
