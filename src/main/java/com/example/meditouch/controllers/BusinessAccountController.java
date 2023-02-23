@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,7 +42,6 @@ import models.AppointmentReferralModel;
 import models.AppointmentResultModel;
 import models.BlockModel;
 import models.BusinessAccountModel;
-import models.BusinessAccountScheduleModel;
 import models.BusinessAccountScheduleSlotModel;
 import models.GlobalSearchModel;
 import models.NotificationsModel;
@@ -55,6 +55,73 @@ public class BusinessAccountController {
 
 	public BusinessAccountController(SimpMessagingTemplate messagingTemplate) {
 		this.messagingTemplate = messagingTemplate;
+	}
+
+	@GetMapping("/getBusinessAccountAppointmentsStatistics/{businessAccountFk}/{fromDate}/{toDate}")
+	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountFk") int businessAccountFk,
+			@PathVariable("fromDate") Date fromDate, @PathVariable("toDate") Date toDate)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"SELECT sum(a.isCancelled = 1) as num_appointments_cancelled,sum(a.isCancelled = 0) as num_appointments_not_cancelled, sum(a.isApproved = 1) as num_appointments_approved ,sum(a.isApproved = 0) as num_appointments_not_approved, DATE(basst.slotDate) AS appointment_date, COUNT(a.appointmentId) AS num_appointments FROM appointments_table a INNER JOIN business_account_schedule_slots_table basst ON a.slotFk = basst.slotId where date(basst.slotDate) between '"
+						+ fromDate + "' and '" + toDate + "' and a.businessAccountFk=? GROUP BY DATE(basst.slotDate)"
+						+ "");
+		myStmt.setInt(1, businessAccountFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("appointmentDate", myRs.getDate("appointment_date"));
+			json.put("numAppointments", myRs.getInt("num_appointments"));
+			json.put("numAppointmentsCancelled", myRs.getInt("num_appointments_cancelled"));
+			json.put("numAppointmentsNotCancelled", myRs.getInt("num_appointments_not_cancelled"));
+			json.put("numAppointmentsNotApproved", myRs.getInt("num_appointments_not_approved"));
+			json.put("numAppointmentsApproved", myRs.getInt("num_appointments_approved"));
+
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "Results Returned");
+		jsonResponse.put("results", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@GetMapping("/getBusinessAccountStatistics/{businessAccountId}")
+	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountId") int businessAccountId)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt where apt.businessAccountFk=?) as p1 JOIN (SELECT COUNT(babt.blockId) as total_blocked_users from business_account_blockings_table babt where businessAccountFk=?) as p2 JOIN (SELECT COUNT(bart.referralId) as total_referrals from business_account_referrals_table bart where bart.referredToBusinessAccountFk=?) as p3");
+		myStmt.setInt(1, businessAccountId);
+		myStmt.setInt(2, businessAccountId);
+		myStmt.setInt(3, businessAccountId);
+
+		ResultSet myRs = myStmt.executeQuery();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("totalAppointments", myRs.getInt("total_appointments"));
+			json.put("totalPatients", myRs.getInt("total_patients"));
+			json.put("totalBlockedUsers", myRs.getInt("total_blocked_users"));
+			json.put("totalReferrals", myRs.getInt("total_referrals"));
+
+			jsonResponse.put("message", "Results Returned");
+			jsonResponse.put("result", json);
+
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+
+		}
+		return null;
+
 	}
 
 	// passed
@@ -215,23 +282,25 @@ public class BusinessAccountController {
 
 	}
 
-	@GetMapping("/getAppointments/{userFk}/{pageNumber}/{recordsByPage}")
-	public ResponseEntity<Object> getAppointments(@PathVariable("userFk") int userFk,
-			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
-			throws SQLException, IOException {
+	@GetMapping("/getAppointments/{id}/{userType}/{pageNumber}/{recordsByPage}")
+	public ResponseEntity<Object> getAppointments(@PathVariable("id") int id,
+			@PathVariable("userType") String userType, @PathVariable("pageNumber") int pageNumber,
+			@PathVariable("recordsByPage") int recordsByPage) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"select * from appointments_tabel at join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId=bat.userFk where at.userFk=? Limit "
-						+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage);
-		myStmt.setInt(1, userFk);
+				"select * from appointments_table at join business_accounts_services_table bast on bast.serviceId=at.serviceFk join business_account_schedule_slots_table basset on basset.slotId = at.slotFk join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId="
+						+ (userType.equals("PATIENT") ? "bat.userFk" : "at.userFk")
+						+ " where " + (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") +" order by Date(basset.slotDate) DESC Limit " + recordsByPage + " OFFSET "
+						+ (pageNumber - 1) * recordsByPage);
+		myStmt.setInt(1, id);
 
 		ResultSet myRs = myStmt.executeQuery();
 		JSONArray jsonArray = new JSONArray();
 
 		while (myRs.next()) {
 			JSONObject json = new JSONObject();
-
+			json.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
 			json.put("appointmentActualStartTime", myRs.getTimestamp("appointmentActualStartTime"));
 			json.put("appointmentActualEndTime", myRs.getTimestamp("appointmentActualEndTime"));
 			json.put("appointmentStatus", myRs.getString("appointmentStatus"));
@@ -239,6 +308,10 @@ public class BusinessAccountController {
 			json.put("lastName", myRs.getString("lastName"));
 			json.put("userEmail", myRs.getString("userEmail"));
 			json.put("profilePicture", myRs.getString("profilePicture"));
+			json.put("serviceName", myRs.getString("serviceName"));
+			json.put("servicePrice", myRs.getDouble("servicePrice"));
+			json.put("currencyUnit", myRs.getString("currencyUnit"));
+
 			jsonArray.put(json);
 
 		}
@@ -489,7 +562,7 @@ public class BusinessAccountController {
 	}
 
 	// passed
-	@PostMapping("/updateService")
+	@PutMapping("/updateService")
 	public ResponseEntity<Object> updateService(@RequestBody ServiceModel[] serviceModel)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
@@ -634,7 +707,7 @@ public class BusinessAccountController {
 	}
 
 	// passed
-	@PostMapping("/updateBusinessAccount")
+	@PutMapping("/updateBusinessAccount")
 	public ResponseEntity<Object> updateBusinessAccount(@RequestBody BusinessAccountModel businessAccountModel)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
@@ -669,7 +742,6 @@ public class BusinessAccountController {
 	@GetMapping("/getBusinessAccount/{userFk}")
 	public ResponseEntity<Object> getBusinessAccount(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
-		ObjectMapper mapper = new ObjectMapper();
 		JSONObject jsonResponse = new JSONObject();
 
 		String query = "select * from business_account_table where userFk=?";
@@ -715,7 +787,7 @@ public class BusinessAccountController {
 	}
 
 	// passed
-	@PostMapping("/modifySlotLock/{slotId}")
+	@PutMapping("/modifySlotLock/{slotId}")
 	public ResponseEntity<Object> modifySlotLock(@PathVariable("slotId") int slotId) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update business_account_schedule_slots_table set isLocked = CASE WHEN isLocked = true THEN false ELSE true END  where slotId=?";

@@ -7,14 +7,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
-import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+
 import java.util.stream.Collectors;
 
 import org.json.JSONArray;
@@ -26,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,7 +40,6 @@ import Enums.UserRoles;
 import models.AppointmentModel;
 import models.BlogModel;
 import models.BusinessAccountModel;
-import models.BusinessAccountScheduleSlotModel;
 import models.CommunityPostCommentModel;
 import models.CommunityPostModel;
 import models.ContactUsModel;
@@ -283,7 +280,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updateBlog")
+	@PutMapping("/updateBlog")
 	public ResponseEntity<Object> updateBlog(@RequestBody BlogModel blogModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -489,7 +486,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updateNotification")
+	@PutMapping("/updateNotification")
 	public ResponseEntity<Object> updateNotification(@RequestBody NotificationsModel[] notificationModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -611,7 +608,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updateUser")
+	@PutMapping("/updateUser")
 	public ResponseEntity<Object> updateUser(@RequestBody UserModel userModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -732,7 +729,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updateCommunityPostComment")
+	@PutMapping("/updateCommunityPostComment")
 	public ResponseEntity<Object> updateCommunityPostComment(
 			@RequestBody CommunityPostCommentModel communityPostCommentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -944,7 +941,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updateAppointment")
+	@PutMapping("/updateAppointment")
 	public ResponseEntity<Object> updateAppointment(
 
 			@RequestBody AppointmentModel appointmentModel) throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1055,7 +1052,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updateCommunityPost")
+	@PutMapping("/updateCommunityPost")
 	public ResponseEntity<Object> updateCommunityPost(@RequestBody CommunityPostModel communityPostModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -1487,7 +1484,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/forgetPassword")
+	@PutMapping("/forgetPassword")
 	public ResponseEntity<Object> forgetPassword(@RequestBody UserModel user)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -1508,7 +1505,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/updatePassword")
+	@PutMapping("/updatePassword")
 	public ResponseEntity<Object> updatePassword(@RequestBody UpdatePasswordModel updatePasswordModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
@@ -1707,7 +1704,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/verifyUser/{userId}")
+	@PutMapping("/verifyUser/{userId}")
 	public ResponseEntity<Object> verifyUser(@PathVariable("userId") int userId) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update users_table set isVerified = true where userId=?";
@@ -1724,7 +1721,7 @@ public class UserController {
 	}
 
 	// passed
-	@PostMapping("/approveUser/{userId}")
+	@PutMapping("/approveUser/{userId}")
 	public ResponseEntity<Object> approveUser(@PathVariable("userId") int userId) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update users_table set isApproved = true where userId=?";
