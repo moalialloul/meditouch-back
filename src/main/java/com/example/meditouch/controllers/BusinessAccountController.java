@@ -37,6 +37,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import Enums.NotificationType;
+import models.AppointmentFilters;
 import models.AppointmentPrescriptionModel;
 import models.AppointmentReferralModel;
 import models.AppointmentResultModel;
@@ -137,7 +138,7 @@ public class BusinessAccountController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
 		}
 
 		query = "select u.firstName as referredByFirstName,u.lastName as referredByLastName,u.userEmail as referredByUserEmail,u.profilePicture as referredByProfilePicture, srt.serviceName, srt.servicePrice,srt.currencyUnit, bart.referralDescription, bat.biography as referredToBiography, bat.clinicLocation as referredToClinicLocation, bat.clinicLocationLongitude as referredToClinicLocationLongitude, bat.clinicLocationLatitude as referredToClinicLocationLatitude, u.firstName as referredToFirstName, u.lastName as referredToLastName, u.userEmail as referredToUserEmail, u.profilePicture as referredToProfilePicture, st.specialityName as referredToSpecialityName from business_account_referrals_table bart join business_account_table bat on bat.businessAccountId = bart.referredToBusinessAccountFk join business_account_table bat2 on bat2.businessAccountId=bart.referredByBusinessAccountFk join users_table ut2 on ut2.userId=bat2.userFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk join appointments_table atb on atb.appointmentId=bart.appointmentFk join business_accounts_services_table srt on srt.serviceId=atb.serviceFk where bart.userFk"
@@ -282,20 +283,54 @@ public class BusinessAccountController {
 
 	}
 
-	@GetMapping("/getAppointments/{id}/{userType}/{pageNumber}/{recordsByPage}")
-	public ResponseEntity<Object> getAppointments(@PathVariable("id") int id,
-			@PathVariable("userType") String userType, @PathVariable("pageNumber") int pageNumber,
-			@PathVariable("recordsByPage") int recordsByPage) throws SQLException, IOException {
+	@PostMapping("/getAppointments/{id}/{userType}/{pageNumber}/{recordsByPage}")
+	public ResponseEntity<Object> getAppointments(@PathVariable("id") int id, @PathVariable("userType") String userType,
+			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
+			@RequestBody AppointmentFilters appointmentFilters) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
+		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 
+		String query = "select COUNT(*) AS total_count from appointments_table at join business_account_schedule_slots_table basset on basset.slotId = at.slotFk  where "
+				+ (userType.equals(
+						"PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?")
+				+ " "
+				+ (!appointmentFilters.getIsAll()
+						? (appointmentFilters.getAdditionalFilters()
+								? " and at.isApproved=" + appointmentFilters.getIsApproved() + " and at.isCancelled="
+										+ appointmentFilters.getIsCancelled() + ""
+										+ (appointmentFilters.getAppointmentStatus() != null
+												? " and at.appointmentStatus=" + appointmentFilters.getAppointmentStatus()
+												: "")
+								: "") + " and basset.slotStartTime " + (appointmentFilters.getIsUpcoming() ? ">" : "<")
+								+ "'" + timestamp + "'"
+
+						: "");
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, id);
+		ResultSet myRs = myStmt.executeQuery();
+		int totalNumberOfPages = 0;
+		if (myRs.next()) {
+
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0 / recordsByPage );
+		}
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
 				"select * from appointments_table at join business_accounts_services_table bast on bast.serviceId=at.serviceFk join business_account_schedule_slots_table basset on basset.slotId = at.slotFk join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId="
-						+ (userType.equals("PATIENT") ? "bat.userFk" : "at.userFk")
-						+ " where " + (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") +" order by Date(basset.slotDate) DESC Limit " + recordsByPage + " OFFSET "
+						+ (userType.equals("PATIENT") ? "bat.userFk" : "at.userFk") + " where "
+						+ (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") + " "
+						+ (!appointmentFilters.getIsAll() ? (appointmentFilters.getAdditionalFilters()
+								? " and at.isApproved=" + appointmentFilters.getIsApproved() + " and at.isCancelled="
+										+ appointmentFilters.getIsCancelled() + ""
+										+ (appointmentFilters.getAppointmentStatus() != null
+												? " and at.appointmentStatus=" + appointmentFilters.getAppointmentStatus()
+												: "")
+								: "") + " and basset.slotStartTime " + (appointmentFilters.getIsUpcoming() ? ">" : "<")
+								+ "'" + timestamp + "'" : "")
+
+						+ " ORDER BY timestamp(basset.slotStartTime) DESC Limit " + recordsByPage + " OFFSET "
 						+ (pageNumber - 1) * recordsByPage);
 		myStmt.setInt(1, id);
 
-		ResultSet myRs = myStmt.executeQuery();
+		myRs = myStmt.executeQuery();
 		JSONArray jsonArray = new JSONArray();
 
 		while (myRs.next()) {
@@ -309,14 +344,17 @@ public class BusinessAccountController {
 			json.put("userEmail", myRs.getString("userEmail"));
 			json.put("profilePicture", myRs.getString("profilePicture"));
 			json.put("serviceName", myRs.getString("serviceName"));
+
 			json.put("servicePrice", myRs.getDouble("servicePrice"));
 			json.put("currencyUnit", myRs.getString("currencyUnit"));
+			json.put("appointmentId", myRs.getInt("appointmentId"));
 
 			jsonArray.put(json);
 
 		}
 		jsonResponse.put("message", "Appointments Returned");
 		jsonResponse.put("appointments", jsonArray);
+		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
 
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
@@ -603,7 +641,7 @@ public class BusinessAccountController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -821,7 +859,7 @@ public class BusinessAccountController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 		query = "select slotId,scheduleFk,slotDate,slotStartTime,slotEndTime,isLocked from business_account_schedule_slots_table where scheduleFk=? Group By slotId limit "
 				+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
@@ -1024,7 +1062,7 @@ public class BusinessAccountController {
 		int totalNumberOfPages = 0;
 		boolean appendWhere = true;
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 		query = "SELECT * from (select * from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit 2 OFFSET 0) as temp join specialities_table "
 				+ " st on temp.specialityFk = st.specialityId join business_account_schedule_table bast "

@@ -65,7 +65,7 @@ public class UserController {
 		this.messagingTemplate = messagingTemplate;
 	}
 
-	//passed
+	// passed
 	@GetMapping("/getSurveyQuestionsAnswers/{surveyFk}")
 	public ResponseEntity<Object> getSurveyQuestionsAnswers(@PathVariable("surveyFk") int surveyFk)
 			throws SQLException, IOException {
@@ -118,7 +118,7 @@ public class UserController {
 
 	}
 
-	//passed
+	// passed
 	@PostMapping("/addSurveyAnswers")
 	public ResponseEntity<Object> addSurveyAnswers(@RequestBody SurveyAnswersModel[] surveyAnswersModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -173,7 +173,7 @@ public class UserController {
 
 	}
 
-	//passed
+	// passed
 	@GetMapping("/getSurvey/{surveyFk}")
 	public ResponseEntity<Object> getSurvey(@PathVariable("surveyFk") int surveyFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -233,7 +233,7 @@ public class UserController {
 
 	}
 
-	//passed
+	// passed
 	@PostMapping("/addSurveyQuestionsAnswers/{surveyFk}")
 	public ResponseEntity<Object> addSurveyQuestionsAnswers(@PathVariable("surveyFk") int surveyFk,
 			@RequestBody SurveyQuestionAnswersModel[] surveyQuestionAnswersModel)
@@ -409,7 +409,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select * from notifications_table nt join users_table ut on ut.userId=nt.userFromFk where nt.userToFk=? ";
@@ -465,7 +465,7 @@ public class UserController {
 
 	}
 
-	//passed
+	// passed
 	@DeleteMapping("/deleteAllNotifications/{userFk}")
 	public ResponseEntity<Object> deleteAllNotifications(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -774,7 +774,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select * from posts_comments_table pct join users_table ut on ut.userId=pct.userFk  where postFk=? order by commentId DESC limit "
@@ -862,7 +862,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
 		}
 
 		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk ";
@@ -986,9 +986,9 @@ public class UserController {
 				WebSocketController.sendMessage("/topic/appointments/" + appointmentModel.getUserFk(), json.toString());
 
 			}
-			if (affectedRowName.equals("isCancelled")) {
+			if (affectedRowName.equals("isCancelled") || affectedRowName.equals("appointmentStatus")) {
 				JSONObject json = new JSONObject();
-				json.put("type", "UPDATE");
+				json.put("type", "UPDATE_APPOINTMENT");
 				json.put("appointment", appointmentModel);
 				if (appointmentModel.getCancelledBy() == UserRoles.PATIENT) {
 
@@ -1125,7 +1125,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
 		}
 
 		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from favorites_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? limit "
@@ -1291,7 +1291,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
 		}
 
 		query = "select f.feedbackDescription,f.feedbackId, bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk ";
@@ -1348,7 +1348,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
 		}
 
 		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? ";
