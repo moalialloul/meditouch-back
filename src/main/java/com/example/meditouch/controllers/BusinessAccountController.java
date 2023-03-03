@@ -99,11 +99,14 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountId") int businessAccountId)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt where apt.businessAccountFk=?) as p1 JOIN (SELECT COUNT(babt.blockId) as total_blocked_users from business_account_blockings_table babt where businessAccountFk=?) as p2 JOIN (SELECT COUNT(bart.referralId) as total_referrals from business_account_referrals_table bart where bart.referredToBusinessAccountFk=?) as p3";
+		String query = "Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt where apt.businessAccountFk="
+				+ businessAccountId
+				+ ") as p1 JOIN (SELECT COUNT(babt.blockId) as total_blocked_users from business_account_blockings_table babt where businessAccountFk="
+				+ businessAccountId
+				+ ") as p2 JOIN (SELECT COUNT(bart.referralId) as total_referrals from business_account_referrals_table bart where bart.referredToBusinessAccountFk="
+				+ businessAccountId + ") as p3";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, businessAccountId);
-		myStmt.setInt(2, businessAccountId);
-		myStmt.setInt(3, businessAccountId);
+		
 
 		ResultSet myRs = myStmt.executeQuery();
 		while (myRs.next()) {
