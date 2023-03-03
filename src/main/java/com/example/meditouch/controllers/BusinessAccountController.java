@@ -36,6 +36,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import Enums.AppointmentStatus;
 import Enums.NotificationType;
 import models.AppointmentFilters;
 import models.AppointmentPrescriptionModel;
@@ -98,9 +99,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountId") int businessAccountId)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
-
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt where apt.businessAccountFk=?) as p1 JOIN (SELECT COUNT(babt.blockId) as total_blocked_users from business_account_blockings_table babt where businessAccountFk=?) as p2 JOIN (SELECT COUNT(bart.referralId) as total_referrals from business_account_referrals_table bart where bart.referredToBusinessAccountFk=?) as p3");
+		String query = "Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt where apt.businessAccountFk=?) as p1 JOIN (SELECT COUNT(babt.blockId) as total_blocked_users from business_account_blockings_table babt where businessAccountFk=?) as p2 JOIN (SELECT COUNT(bart.referralId) as total_referrals from business_account_referrals_table bart where bart.referredToBusinessAccountFk=?) as p3";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, businessAccountId);
 		myStmt.setInt(2, businessAccountId);
 		myStmt.setInt(3, businessAccountId);
@@ -138,7 +138,7 @@ public class BusinessAccountController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select u.firstName as referredByFirstName,u.lastName as referredByLastName,u.userEmail as referredByUserEmail,u.profilePicture as referredByProfilePicture, srt.serviceName, srt.servicePrice,srt.currencyUnit, bart.referralDescription, bat.biography as referredToBiography, bat.clinicLocation as referredToClinicLocation, bat.clinicLocationLongitude as referredToClinicLocationLongitude, bat.clinicLocationLatitude as referredToClinicLocationLatitude, u.firstName as referredToFirstName, u.lastName as referredToLastName, u.userEmail as referredToUserEmail, u.profilePicture as referredToProfilePicture, st.specialityName as referredToSpecialityName from business_account_referrals_table bart join business_account_table bat on bat.businessAccountId = bart.referredToBusinessAccountFk join business_account_table bat2 on bat2.businessAccountId=bart.referredByBusinessAccountFk join users_table ut2 on ut2.userId=bat2.userFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk join appointments_table atb on atb.appointmentId=bart.appointmentFk join business_accounts_services_table srt on srt.serviceId=atb.serviceFk where bart.userFk"
@@ -291,40 +291,48 @@ public class BusinessAccountController {
 		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 
 		String query = "select COUNT(*) AS total_count from appointments_table at join business_account_schedule_slots_table basset on basset.slotId = at.slotFk  where "
-				+ (userType.equals(
-						"PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?")
-				+ " "
-				+ (!appointmentFilters.getIsAll()
-						? (appointmentFilters.getAdditionalFilters()
-								? " and at.isApproved=" + appointmentFilters.getIsApproved() + " and at.isCancelled="
-										+ appointmentFilters.getIsCancelled() + ""
-										+ (appointmentFilters.getAppointmentStatus() != null
-												? " and at.appointmentStatus=" + appointmentFilters.getAppointmentStatus()
-												: "")
-								: "") + " and basset.slotStartTime " + (appointmentFilters.getIsUpcoming() ? ">" : "<")
-								+ "'" + timestamp + "'"
+				+ (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") + " "
+				+ (appointmentFilters.getAppointmentType().equals("ALL") ? ""
+						: appointmentFilters.getAppointmentType().equals("UPCOMING")
+								? " and basset.slotStartTime > '" + timestamp + "'"
+								: " and basset.slotStartTime < '" + timestamp + "'")
+				+ (appointmentFilters.getAppointmentStatus().toString().equals("ACCEPTED")
+						? " and at.appointmentStatus = 'ACCEPTED'"
+						: appointmentFilters.getAppointmentStatus().toString().equals("PENDING")
+								? " and at.appointmentStatus = 'PENDING'"
+								: appointmentFilters.getAppointmentStatus().toString().equals("REJECTED")
+										? " and at.appointmentStatus = 'REJECTED'"
+										: "" + (appointmentFilters.getIsCancelled() == 1 ? " and at.isCancelled=1"
+												: appointmentFilters.getIsCancelled() == 0 ? " and at.isCancelled= 0"
+														: ""));
 
-						: "");
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, id);
 		ResultSet myRs = myStmt.executeQuery();
 		int totalNumberOfPages = 0;
 		if (myRs.next()) {
 
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0 / recordsByPage );
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
 				"select * from appointments_table at join business_accounts_services_table bast on bast.serviceId=at.serviceFk join business_account_schedule_slots_table basset on basset.slotId = at.slotFk join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId="
 						+ (userType.equals("PATIENT") ? "bat.userFk" : "at.userFk") + " where "
 						+ (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") + " "
-						+ (!appointmentFilters.getIsAll() ? (appointmentFilters.getAdditionalFilters()
-								? " and at.isApproved=" + appointmentFilters.getIsApproved() + " and at.isCancelled="
-										+ appointmentFilters.getIsCancelled() + ""
-										+ (appointmentFilters.getAppointmentStatus() != null
-												? " and at.appointmentStatus=" + appointmentFilters.getAppointmentStatus()
-												: "")
-								: "") + " and basset.slotStartTime " + (appointmentFilters.getIsUpcoming() ? ">" : "<")
-								+ "'" + timestamp + "'" : "")
+						+ (appointmentFilters.getAppointmentType().equals("ALL") ? ""
+								: appointmentFilters.getAppointmentType().equals("UPCOMING")
+										? " and basset.slotStartTime > '" + timestamp + "'"
+										: " and basset.slotStartTime < '" + timestamp + "'")
+						+ (appointmentFilters.getAppointmentStatus().toString().equals("ACCEPTED")
+								? " and at.appointmentStatus = 'ACCEPTED'"
+								: appointmentFilters.getAppointmentStatus().toString().equals("PENDING")
+										? " and at.appointmentStatus = 'PENDING'"
+										: appointmentFilters.getAppointmentStatus().toString().equals("REJECTED")
+												? " and at.appointmentStatus = 'REJECTED'"
+												: "" + (appointmentFilters.getIsCancelled() == 1
+														? " and at.isCancelled=1"
+														: appointmentFilters.getIsCancelled() == 0
+																? " and at.isCancelled= 0"
+																: ""))
 
 						+ " ORDER BY timestamp(basset.slotStartTime) DESC Limit " + recordsByPage + " OFFSET "
 						+ (pageNumber - 1) * recordsByPage);
@@ -999,6 +1007,8 @@ public class BusinessAccountController {
 			int i = 0;
 			while (slotsGeneratedKeys.next()) {
 				businessAccountScheduleSlotModel[i].setSlotId(slotsGeneratedKeys.getInt(1));
+				businessAccountScheduleSlotModel[i].setScheduleFk(scheduleId);
+
 				i++;
 			}
 			myStmt.close();
