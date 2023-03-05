@@ -8,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -48,6 +50,7 @@ import models.BusinessAccountScheduleSlotModel;
 import models.GlobalSearchModel;
 import models.NotificationsModel;
 import models.ServiceModel;
+import models.UserModel;
 
 @RestController
 public class BusinessAccountController {
@@ -57,6 +60,61 @@ public class BusinessAccountController {
 
 	public BusinessAccountController(SimpMessagingTemplate messagingTemplate) {
 		this.messagingTemplate = messagingTemplate;
+	}
+
+	@MessageMapping("/hello")
+	public void sayHello(UserModel user) throws SQLException, IOException {
+		JSONObject json = new JSONObject();
+		json.put("name", user.getFirstName());
+		messagingTemplate.convertAndSend("/topic/greetings", json.toString());
+	}
+
+	// passed
+	@GetMapping("/getTodayAppointments/{businessAccountFk}")
+	public ResponseEntity<Object> getTodayAppointments(@PathVariable("businessAccountFk") int businessAccountFk)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"select atb.appointmentId,basst.slotStartTime, basst.slotEndTime, atb.appointmentActualStartTime, atb.appointmentActualEndTime, atb.appointmentStatus,atb.isApproved, atb.isCancelled, atb.userFk, ut.firstName, ut.lastName, ut.userEmail , ut.profilePicture from appointments_table atb join business_account_schedule_slots_table basst on basst.slotId = atb.slotFk join users_table ut on ut.userId=atb.userFk where atb.appointmentStatus = 'ACCEPTED' and Date(basst.slotDate)=CURDATE() and atb.businessAccountFk=? order by timestamp(basst.slotStartTime) ASC");
+
+		myStmt.setInt(1, businessAccountFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("appointmentId", myRs.getInt("appointmentId"));
+			json.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
+			json.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
+			json.put("appointmentStatus", myRs.getString("appointmentStatus"));
+			json.put("isApproved", myRs.getBoolean("isApproved"));
+			json.put("isCancelled", myRs.getBoolean("isCancelled"));
+			json.put("userFk", myRs.getInt("userFk"));
+
+			json.put("appointmentActualStartTime",
+					myRs.getTimestamp("appointmentActualStartTime") != null
+							? myRs.getTimestamp("appointmentActualStartTime")
+							: -1);
+			json.put("appointmentActualEndTime",
+					myRs.getTimestamp("appointmentActualEndTime") != null
+							? myRs.getTimestamp("appointmentActualEndTime")
+							: -1);
+
+			json.put("firstName", myRs.getString("firstName"));
+			json.put("lastName", myRs.getString("lastName"));
+			json.put("userEmail", myRs.getString("userEmail"));
+			json.put("profilePicture", myRs.getString("profilePicture"));
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "Appointments Returned");
+		jsonResponse.put("appointments", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
 	}
 
 	@GetMapping("/getBusinessAccountAppointmentsStatistics/{businessAccountFk}/{fromDate}/{toDate}")
@@ -95,6 +153,38 @@ public class BusinessAccountController {
 	}
 
 	// passed
+	@GetMapping("/getBusinessAccountPatients/{businessAccountId}")
+	public ResponseEntity<Object> getBusinessAccountPatients(@PathVariable("businessAccountId") int businessAccountId)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select DISTINCT apt.userFk as userId, ut.firstName, ut.lastName, ut.userEmail, ut.profilePicture, COALESCE(babt.blockId, -1) as blockId from appointments_table apt join users_table ut on ut.userId=apt.userFk left join business_account_blockings_table babt on babt.userFk = apt.userFk where apt.businessAccountFk="
+				+ businessAccountId;
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("blockId", myRs.getInt("blockId"));
+
+			json.put("userId", myRs.getInt("userId"));
+			json.put("firstName", myRs.getString("firstName"));
+			json.put("lastName", myRs.getString("lastName"));
+			json.put("userEmail", myRs.getString("userEmail"));
+
+			json.put("profilePicture", myRs.getString("profilePicture"));
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "Patients Returned");
+		jsonResponse.put("patients", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@GetMapping("/getBusinessAccountStatistics/{businessAccountId}")
 	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountId") int businessAccountId)
 			throws SQLException, IOException {
@@ -106,7 +196,6 @@ public class BusinessAccountController {
 				+ ") as p2 JOIN (SELECT COUNT(bart.referralId) as total_referrals from business_account_referrals_table bart where bart.referredToBusinessAccountFk="
 				+ businessAccountId + ") as p3";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		
 
 		ResultSet myRs = myStmt.executeQuery();
 		while (myRs.next()) {
