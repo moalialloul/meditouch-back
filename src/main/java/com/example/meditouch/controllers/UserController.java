@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -11,7 +12,7 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.json.JSONArray;
@@ -862,7 +863,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk ";
@@ -946,10 +947,51 @@ public class UserController {
 
 			@RequestBody AppointmentModel appointmentModel) throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
+		String selectQuery = "SELECT * FROM appointments_table WHERE appointmentId=?";
+		PreparedStatement selectStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(selectQuery);
+		selectStmt.setInt(1, appointmentModel.getAppointmentId());
+
+		ResultSet rs = selectStmt.executeQuery();
+		if (rs.next()) {
+			Timestamp appointmentActualStartTime = rs.getTimestamp("appointmentActualStartTime");
+			Timestamp appointmentActualStartTimeNewValue = appointmentModel.getAppointmentActualStartTime();
+			boolean isCancelled = rs.getBoolean("isCancelled");
+			boolean isCancelledNewValue = appointmentModel.getIsCancelled();
+			Timestamp appointmentActualEndTime = rs.getTimestamp("appointmentActualEndTime");
+			Timestamp appointmentActualEndTimeNewValue = appointmentModel.getAppointmentActualEndTime();
+
+			if (!Objects.equals(appointmentActualStartTime, appointmentActualStartTimeNewValue)) {
+				JSONObject json = new JSONObject();
+				json.put("message", "It's Your Turn. Doctor Is Waiting You");
+				messagingTemplate.convertAndSend("/topic/clinicTurn/" + appointmentModel.getUserFk(), json.toString());
+			}
+			if (!Objects.equals(appointmentActualEndTime, appointmentActualEndTimeNewValue)) {
+				JSONObject json = new JSONObject();
+				json.put("message", "Be ready for your appointment");
+				messagingTemplate.convertAndSend("/topic/clinicTurn/" + appointmentModel.getUserFk(), json.toString());
+			}
+
+			if (!Objects.equals(isCancelled, isCancelledNewValue)) {
+				JSONObject json = new JSONObject();
+				json.put("type", "UPDATE_APPOINTMENT");
+				json.put("appointment", appointmentModel);
+				if (appointmentModel.getCancelledBy() == UserRoles.PATIENT) {
+
+					messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
+							json.toString());
+				} else {
+
+					messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getUserFk(),
+							json.toString());
+
+				}
+			}
+
+		}
 		String query = "update appointments_table set appointmentActualStartTime=?, appointmentActualEndTime=?, appointmentStatus=?, isApproved=?, isCancelled=? "
 				+ (appointmentModel.getCancelledBy() != null ? " ,cancelledBy=? " : " ") + " where appointmentId=?";
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
 		myStmt.setTimestamp(1, appointmentModel.getAppointmentActualStartTime());
 		myStmt.setTimestamp(2, appointmentModel.getAppointmentActualEndTime());
@@ -965,43 +1007,6 @@ public class UserController {
 		}
 
 		myStmt.executeUpdate();
-		ResultSet generatedKeys = myStmt.getGeneratedKeys();
-
-		while (generatedKeys.next()) {
-			String affectedRowName = generatedKeys.getString(1);
-			// doctor has all appointments all start of appointments will be disabled except
-			// first
-			// press start on first appointment
-			// two btns will appear Alertnextuser and EndAppointmentBtn
-			// EndAppointmentBtn will be disabled until he alerts next user and thus send
-			// message to next user (already has his id from appointments array)
-			// after he alerts Alertnextuser will disappear and EndAppointmentBtn will be
-			// enabled and thus update appointmentActualEndTime
-			// after EndAppointmentBtn pressed status of appointment will be ended (replace
-			// btns with ended)
-			// and start of next appointment will be enabled ...
-			if (affectedRowName.equals("appointmentActualStartTime")) {
-				JSONObject json = new JSONObject();
-				json.put("message", "It's Your Turn. Doctor Is Waiting You");
-				WebSocketController.sendMessage("/topic/appointments/" + appointmentModel.getUserFk(), json.toString());
-
-			}
-			if (affectedRowName.equals("isCancelled") || affectedRowName.equals("appointmentStatus")) {
-				JSONObject json = new JSONObject();
-				json.put("type", "UPDATE_APPOINTMENT");
-				json.put("appointment", appointmentModel);
-				if (appointmentModel.getCancelledBy() == UserRoles.PATIENT) {
-
-					messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
-							json.toString());
-				} else {
-
-					messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getUserFk(),
-							json.toString());
-				}
-			}
-
-		}
 
 		jsonResponse.put("message", "Appointment Updated successfully");
 		jsonResponse.put("responseCode", 200);
@@ -1028,23 +1033,34 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				communityPostModel.setPostId(id);
+				query = "select * from users_table where userId=" + communityPostModel.getUserFk();
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				ResultSet rs = myStmt.executeQuery();
+				if(rs.next()) {
+					JSONObject jsonResponseData = new JSONObject();
+					jsonResponseData.put("postId", id);
+					jsonResponseData.put("userFk", communityPostModel.getUserFk());
+					jsonResponseData.put("postService", communityPostModel.getPostService());
+					jsonResponseData.put("postDescription", communityPostModel.getPostDescription());
+					jsonResponseData.put("firstName", rs.getString("firstName"));
+					jsonResponseData.put("lastName", rs.getString("lastName"));
+					jsonResponseData.put("userEmail", rs.getString("userEmail"));
+					jsonResponseData.put("profilePicture", rs.getString("profilePicture"));
 
-				JSONObject json = new JSONObject();
-				json.put("type", "ADD");
-				json.put("communityPost", communityPostModel);
+					JSONObject json = new JSONObject();
 
-				messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
-				Gson gson = new Gson();
-				String communityPostJson = gson.toJson(communityPostModel);
-				JsonObject jsonObject = JsonParser.parseString(communityPostJson).getAsJsonObject();
-				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-				jsonResponse.put("message", "Post Added successfully");
-				jsonResponse.put("post", jsonReturned);
-				jsonResponse.put("responseCode", 200);
-				myStmt.close();
+					json.put("communityPost", jsonResponseData);
 
-				return ResponseEntity.ok(jsonResponse.toString());
+					messagingTemplate.convertAndSend("/topic/communityPosts/", json.toString());
+
+					jsonResponse.put("message", "Post Added successfully");
+					jsonResponse.put("communityPost", jsonResponseData);
+					jsonResponse.put("responseCode", 200);
+					myStmt.close();
+
+					return ResponseEntity.ok(jsonResponse.toString());
+				}
+			
 			}
 		}
 		return null;
@@ -1125,7 +1141,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from favorites_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? limit "
@@ -1291,7 +1307,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select f.feedbackDescription,f.feedbackId, bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk ";
@@ -1348,7 +1364,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? ";
