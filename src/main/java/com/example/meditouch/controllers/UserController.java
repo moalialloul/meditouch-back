@@ -862,7 +862,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk ";
@@ -1125,7 +1125,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from favorites_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? limit "
@@ -1291,7 +1291,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select f.feedbackDescription,f.feedbackId, bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk ";
@@ -1348,7 +1348,7 @@ public class UserController {
 		int totalNumberOfPages = 0;
 
 		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count")* 1.0  / recordsByPage);
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
 		query = "select bat.biography, bat.clinicLocation, bat.clinicLocationLongitude, bat.clinicLocationLatitude, bat.businessAccountId, u.firstName, u.lastName, u.userEmail, u.profilePicture, st.specialityName, st.specialityDescription from feedbacks_table f join business_account_table bat on bat.businessAccountId = f.businessAccountFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk where f.userFk =? ";
@@ -1481,6 +1481,34 @@ public class UserController {
 
 		return ResponseEntity.ok(jsonResponse.toString());
 
+	}
+
+	// passed
+	@GetMapping("/getGeneralStatistics")
+	public ResponseEntity<Object> getGeneralStatistics() throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select * from ((select count(CASE when ut.userRole='HEALTH_PROFESSIONAL' THEN 1 END) as number_of_hps, count(CASE when ut.userRole='PATIENT' THEN 1 END) as number_of_pts from users_table ut) as q1 join (SELECT count(appointmentId) as number_of_appointments from appointments_table apt) as q2 join (select count(*) as number_of_specialities from specialities_table st)as q3)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		ResultSet myRs = myStmt.executeQuery();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("number_of_hps", myRs.getInt("number_of_hps"));
+			json.put("number_of_pts", myRs.getInt("number_of_pts"));
+			json.put("number_of_appointments", myRs.getInt("number_of_appointments"));
+			json.put("number_of_specialities", myRs.getInt("number_of_specialities"));
+
+			jsonResponse.put("message", "Statistics");
+			jsonResponse.put("statistics", json);
+
+			jsonResponse.put("responseCode", 200);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+
+		return null;
 	}
 
 	// passed
