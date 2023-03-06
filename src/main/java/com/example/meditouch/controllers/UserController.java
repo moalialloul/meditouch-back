@@ -904,7 +904,12 @@ public class UserController {
 	public ResponseEntity<Object> registerAppointment(@RequestBody AppointmentModel appointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
+		String query = "update business_account_schedule_slots_table set isReserved = 1 where slotId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, appointmentModel.getSlotFk());
+		myStmt.executeUpdate();
+
+		query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setInt(1, appointmentModel.getSlotFk());
@@ -913,6 +918,7 @@ public class UserController {
 		myStmt.setInt(4, appointmentModel.getServiceFk());
 
 		myStmt.executeUpdate();
+
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
@@ -921,9 +927,11 @@ public class UserController {
 				JSONObject json = new JSONObject();
 				json.put("type", "ADD");
 				json.put("appointment", appointmentModel);
-
+				JSONObject reservedSlot = new JSONObject();
+				reservedSlot.put("reservedSlot", appointmentModel.getSlotFk());
 				messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
 						json.toString());
+				messagingTemplate.convertAndSend("/topic/reservedSlots/", reservedSlot.toString());
 				Gson gson = new Gson();
 				String appointmentJson = gson.toJson(appointmentModel);
 				JsonObject jsonObject = JsonParser.parseString(appointmentJson).getAsJsonObject();
@@ -1036,7 +1044,7 @@ public class UserController {
 				query = "select * from users_table where userId=" + communityPostModel.getUserFk();
 				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 				ResultSet rs = myStmt.executeQuery();
-				if(rs.next()) {
+				if (rs.next()) {
 					JSONObject jsonResponseData = new JSONObject();
 					jsonResponseData.put("postId", id);
 					jsonResponseData.put("userFk", communityPostModel.getUserFk());
@@ -1060,7 +1068,7 @@ public class UserController {
 
 					return ResponseEntity.ok(jsonResponse.toString());
 				}
-			
+
 			}
 		}
 		return null;
@@ -1193,16 +1201,20 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				favoriteModel.setFavoriteId(id);
-				Gson gson = new Gson();
-				String favoriteJson = gson.toJson(favoriteModel);
-				JsonObject jsonObject = JsonParser.parseString(favoriteJson).getAsJsonObject();
-				JSONObject json = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+				JSONObject json = new JSONObject();
+				json.put("favoriteId", id);
+				json.put("businessAccountFk", favoriteModel.getBusinessAccountFk());
+
 				jsonResponse.put("message", "Favorite Added successfully");
 				jsonResponse.put("favorite", json);
 				jsonResponse.put("responseCode", 200);
-				myStmt.close();
+				JSONObject socketJson = new JSONObject();
+				socketJson.put("type", "ADD");
+				socketJson.put("favoriteDoctorInfo", json);
 
+				myStmt.close();
+				messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + favoriteModel.getUserFk(),
+						socketJson.toString());
 				return ResponseEntity.ok(jsonResponse.toString());
 			}
 		}
@@ -1280,14 +1292,29 @@ public class UserController {
 	public ResponseEntity<Object> deleteFavorite(@PathVariable("favoriteId") int favoriteId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "delete from favorites_table where favoriteId=?";
+		int userId = -1;
+		String query = "select * from favorites_table where favoriteId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, favoriteId);
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			userId = rs.getInt("userFk");
+		}
+		query = "delete from favorites_table where favoriteId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, favoriteId);
 
 		myStmt.executeUpdate();
+		JSONObject json = new JSONObject();
+		json.put("favoriteId", favoriteId);
+		json.put("type", "DELETE");
+
 		jsonResponse.put("message", "Favorite deleted successfully");
 		jsonResponse.put("responseCode", 200);
+
+		messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + userId, json.toString());
+
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}

@@ -11,6 +11,7 @@ public class BusinessAccountScheduleSlotModel {
 	Timestamp slotEndTime;
 	boolean isLocked;
 	int serviceFk;
+	boolean isReserved;
 
 	public BusinessAccountScheduleSlotModel() {
 
@@ -28,11 +29,11 @@ public class BusinessAccountScheduleSlotModel {
 	public String toString() {
 		return "{\"slotId\":" + slotId + ", \"scheduleFk\":" + scheduleFk + ", \"slotDate\":" + slotDate
 				+ ", \"slotStartTime\":" + slotStartTime + ", \"slotEndTime\":" + slotEndTime + ", \"isLocked\":"
-				+ isLocked + ",\"serviceFk\"" + serviceFk + "}";
+				+ isLocked + ",\"serviceFk\"" + serviceFk + ",\"isReserved\":" + isReserved + "}";
 	}
 
 	public BusinessAccountScheduleSlotModel(int slotId, int scheduleFk, Date slotDate, Timestamp slotStartTime,
-			Timestamp slotEndTime, boolean isLocked) {
+			Timestamp slotEndTime, boolean isLocked, boolean isReserved) {
 		super();
 		this.slotId = slotId;
 		this.scheduleFk = scheduleFk;
@@ -40,6 +41,15 @@ public class BusinessAccountScheduleSlotModel {
 		this.slotStartTime = slotStartTime;
 		this.slotEndTime = slotEndTime;
 		this.isLocked = isLocked;
+		this.isReserved = isReserved;
+	}
+
+	public boolean getIsReserved() {
+		return isReserved;
+	}
+
+	public void setIsReserved(boolean isReserved) {
+		this.isReserved = isReserved;
 	}
 
 	public int getSlotId() {

@@ -1166,10 +1166,17 @@ public class BusinessAccountController {
 		if (myRs.next()) {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
-		query = "SELECT * from (select * from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit 2 OFFSET 0) as temp join specialities_table "
+		query = "SELECT " + (globalSearchModel.getUserId() == -1 ? "" : "COALESCE(fv.favoriteId, -1) as favoriteId,")
+				+ " temp.userId,srt.servicePrice, srt.serviceName,srt.serviceId,basst.slotId,basst.isReserved, basst.slotDate, basst.slotStartTime, basst.slotEndTime, basst.isLocked,temp.biography, temp.clinicLocation,temp.clinicLocationLongitude,temp.clinicLocationLatitude,  temp.businessAccountId,  temp.firstName, temp.lastName, temp.userEmail, temp.profilePicture, st.specialityName, st.specialityDescription    from (select *  from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit "
+				+ recordsByPage + " OFFSET " + ((pageNumber - 1) * recordsByPage) + ") as temp join specialities_table "
 				+ " st on temp.specialityFk = st.specialityId join business_account_schedule_table bast "
 				+ " on bast.businessAccountFk = temp.businessAccountId join business_account_schedule_slots_table basst on basst.scheduleFk = bast.scheduleId "
 				+ " join business_accounts_services_table srt on srt.serviceId = basst.serviceFk ";
+		if (globalSearchModel.getUserId() != -1) {
+			query += " left join (select COALESCE(ft.businessAccountFk, -1) as favoriteBusinessAccountFk, COALESCE(ft.favoriteId, -1) as favoriteId from favorites_table ft where ft.userFk="
+					+ globalSearchModel.getUserId()
+					+ ")  as fv ON fv.favoriteBusinessAccountFk = temp.businessAccountId";
+		}
 		if (globalSearchModel.getSpecialityFk() != -1) {
 			appendWhere = false;
 			query += " where st.specialityId=" + globalSearchModel.getSpecialityFk();
@@ -1206,6 +1213,9 @@ public class BusinessAccountController {
 				userSchedule.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
 				userSchedule.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
 				userSchedule.put("isLocked", myRs.getBoolean("isLocked"));
+				userSchedule.put("slotId", myRs.getInt("slotId"));
+				userSchedule.put("isReserved", myRs.getBoolean("isReserved"));
+
 				if (map.containsKey(businessAccountId)) {
 					JSONObject json = new JSONObject();
 
@@ -1218,6 +1228,14 @@ public class BusinessAccountController {
 				} else {
 					JSONObject json = new JSONObject();
 					JSONArray userScheduleArray = new JSONArray();
+					userDetails.put("userId", myRs.getInt("userId"));
+					if (globalSearchModel.getUserId() != -1) {
+						userDetails.put("favoriteId", myRs.getInt("favoriteId"));
+
+					} else {
+						userDetails.put("favoriteId", -1);
+
+					}
 					userDetails.put("biography", myRs.getString("biography"));
 					userDetails.put("clinicLocation", myRs.getString("clinicLocation"));
 					userDetails.put("clinicLocationLongitude", myRs.getDouble("clinicLocationLongitude"));

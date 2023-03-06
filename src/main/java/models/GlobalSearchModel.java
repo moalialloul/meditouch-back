@@ -6,7 +6,7 @@ public class GlobalSearchModel {
 	int specialityFk = -1;
 	double minDistance = -1;
 	double maxDistance = -1;
-
+	int userId = -1;
 	double minPrice = -1;
 	double maxPrice = -1;
 
@@ -76,7 +76,7 @@ public class GlobalSearchModel {
 
 	public GlobalSearchModel(int specialityFk, double minDistance, double maxDistance, double minPrice, double maxPrice,
 			double myLatitude, double myLongitude, Timestamp minDateTime, Timestamp maxDateTime,
-			Timestamp minAvailability, Timestamp maxAvailability) {
+			Timestamp minAvailability, Timestamp maxAvailability, int userId) {
 		super();
 		this.specialityFk = specialityFk;
 		this.minDistance = minDistance;
@@ -90,7 +90,15 @@ public class GlobalSearchModel {
 		this.maxDateTime = maxDateTime;
 		this.minAvailability = minAvailability;
 		this.maxAvailability = maxAvailability;
+		this.userId = userId;
+	}
 
+	public int getUserId() {
+		return userId;
+	}
+
+	public void setUserId(int userId) {
+		this.userId = userId;
 	}
 
 	public GlobalSearchModel() {
@@ -103,7 +111,7 @@ public class GlobalSearchModel {
 				+ maxDistance + ", \"minPrice\":" + minPrice + ", \"maxPrice\":" + maxPrice + ", \"myLatitude\" : "
 				+ myLatitude + ", \"myLongitude\":" + myLongitude + ", \"minDateTime\":" + minDateTime
 				+ ",\"maxDateTime\":" + maxDateTime + ",\"minAvailability\":" + minAvailability
-				+ ",\"maxAvailability\":" + maxAvailability + "}";
+				+ ",\"maxAvailability\":" + maxAvailability + ",\"userId\":"+userId+"}";
 	}
 
 	public Timestamp getMinAvailability() {
