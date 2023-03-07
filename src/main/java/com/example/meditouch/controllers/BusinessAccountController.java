@@ -76,7 +76,7 @@ public class BusinessAccountController {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"select atb.appointmentId,basst.slotStartTime, basst.slotEndTime, atb.appointmentActualStartTime, atb.appointmentActualEndTime, atb.appointmentStatus,atb.isApproved, atb.isCancelled, atb.userFk, ut.firstName, ut.lastName, ut.userEmail , ut.profilePicture from appointments_table atb join business_account_schedule_slots_table basst on basst.slotId = atb.slotFk join users_table ut on ut.userId=atb.userFk where atb.appointmentStatus = 'ACCEPTED' and Date(basst.slotDate)=CURDATE() and atb.businessAccountFk=? order by timestamp(basst.slotStartTime) ASC");
+				"select  COALESCE(art.prescriptionId, -1) as prescriptionId,COALESCE(art.prescriptionDescription, -1) as prescriptionDescription, atb.appointmentId,basst.slotStartTime, basst.slotEndTime, atb.appointmentActualStartTime, atb.appointmentActualEndTime, atb.appointmentStatus,atb.isApproved, atb.isCancelled, atb.userFk, ut.firstName, ut.lastName, ut.userEmail , ut.profilePicture from appointments_table atb join business_account_schedule_slots_table basst on basst.slotId = atb.slotFk left join appointment_prescriptions_table art on art.appointmentFk=atb.appointmentId join users_table ut on ut.userId=atb.userFk where atb.appointmentStatus = 'ACCEPTED' and Date(basst.slotDate)=CURDATE() and atb.businessAccountFk=? order by timestamp(basst.slotStartTime) ASC");
 
 		myStmt.setInt(1, businessAccountFk);
 
@@ -101,6 +101,8 @@ public class BusinessAccountController {
 					myRs.getTimestamp("appointmentActualEndTime") != null
 							? myRs.getTimestamp("appointmentActualEndTime")
 							: -1);
+			json.put("prescriptionId", myRs.getInt("prescriptionId"));
+			json.put("prescriptionDescription", myRs.getString("prescriptionDescription"));
 
 			json.put("firstName", myRs.getString("firstName"));
 			json.put("lastName", myRs.getString("lastName"));
@@ -407,7 +409,7 @@ public class BusinessAccountController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"select * from appointments_table at join business_accounts_services_table bast on bast.serviceId=at.serviceFk join business_account_schedule_slots_table basset on basset.slotId = at.slotFk join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId="
+				"select basset.slotStartTime,at.appointmentActualStartTime, at.appointmentActualEndTime ,at.appointmentStatus, ut.firstName, ut.lastName, ut.userEmail, ut.profilePicture,bast.serviceName,bast.servicePrice, bast.currencyUnit, at.appointmentId,   COALESCE(apt.prescriptionId, -1) as prescriptionId,COALESCE(apt.prescriptionDescription, -1) as prescriptionDescription from appointments_table at left join appointment_prescriptions_table apt on apt.appointmentFk=at.appointmentId  join business_accounts_services_table bast on bast.serviceId=at.serviceFk join business_account_schedule_slots_table basset on basset.slotId = at.slotFk join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId="
 						+ (userType.equals("PATIENT") ? "bat.userFk" : "at.userFk") + " where "
 						+ (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") + " "
 						+ (appointmentFilters.getAppointmentType().equals("ALL") ? ""
@@ -444,6 +446,8 @@ public class BusinessAccountController {
 			json.put("userEmail", myRs.getString("userEmail"));
 			json.put("profilePicture", myRs.getString("profilePicture"));
 			json.put("serviceName", myRs.getString("serviceName"));
+			json.put("prescriptionDescription", myRs.getString("prescriptionDescription"));
+			json.put("prescriptionId", myRs.getInt("prescriptionId"));
 
 			json.put("servicePrice", myRs.getDouble("servicePrice"));
 			json.put("currencyUnit", myRs.getString("currencyUnit"));
@@ -610,7 +614,7 @@ public class BusinessAccountController {
 				"select *, bat.userFk as userFromFk from appointments_table ap join business_account_schedule_slots_table basst on basst.slotId=ap.slotFk join business_account_table bat on bat.businessAccountId = ap.businessAccountFk join users_table ut on ut.userId=bat.userFk where ap.appointmentId=?");
 		myStmt.setInt(1, appointmentPrescriptionModel.getAppointmentFk());
 		ResultSet myRs = myStmt.executeQuery();
-		while (myRs.next()) {
+		if (myRs.next()) {
 			JSONObject json = new JSONObject();
 			String firstName = myRs.getString("firstName");
 			String lastName = myRs.getString("lastName");
@@ -629,20 +633,78 @@ public class BusinessAccountController {
 			notificationModel.add(notification);
 			addNotification(notificationModel);
 			notificationModel.clear();
-			messagingTemplate.convertAndSend("/topic/appointmentPrescription/" + userFk, json.toString());
+			myStmt.close();
 
+			messagingTemplate.convertAndSend("/topic/appointmentPrescription/" + userFk, json.toString());
+			JSONObject jsonReturned = new JSONObject();
+			jsonReturned.put("prescriptionId", prescriptionId);
+			jsonReturned.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
+			jsonReturned.put("prescriptionDescription", appointmentPrescriptionModel.getPrescriptionDescription());
+
+			jsonResponse.put("message", "Appointment Prescription Result Successfully");
+			jsonResponse.put("result", jsonReturned);
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
 		}
 
-		myStmt.close();
-		Gson gson = new Gson();
-		String appointmentPrescriptionModelJson = gson.toJson(appointmentPrescriptionModel);
-		JsonObject jsonObject = JsonParser.parseString(appointmentPrescriptionModelJson).getAsJsonObject();
-		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
-				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-		jsonResponse.put("message", "Appointment Prescription Result Successfully");
-		jsonResponse.put("result", jsonReturned);
-		jsonResponse.put("responseCode", 200);
-		return ResponseEntity.ok(jsonResponse.toString());
+		return null;
+
+	}
+
+	@PutMapping("/updateAppointmentPrescription")
+	public ResponseEntity<Object> updateAppointmentPrescription(
+			@RequestBody AppointmentPrescriptionModel appointmentPrescriptionModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"update appointment_prescriptions_table set prescriptionDescription=? where appointmentFk=?"
+				);
+		myStmt.setString(1, appointmentPrescriptionModel.getPrescriptionDescription());
+		myStmt.setInt(2, appointmentPrescriptionModel.getAppointmentFk());
+
+		myStmt.executeUpdate();
+
+		// send notification to the user
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"select *, bat.userFk as userFromFk from appointments_table ap join business_account_schedule_slots_table basst on basst.slotId=ap.slotFk join business_account_table bat on bat.businessAccountId = ap.businessAccountFk join users_table ut on ut.userId=bat.userFk where ap.appointmentId=?");
+		myStmt.setInt(1, appointmentPrescriptionModel.getAppointmentFk());
+		ResultSet myRs = myStmt.executeQuery();
+		if (myRs.next()) {
+			JSONObject json = new JSONObject();
+			String firstName = myRs.getString("firstName");
+			String lastName = myRs.getString("lastName");
+			Date slotDate = myRs.getDate("slotDate");
+			int userFromFk = myRs.getInt("userFromFk");
+
+			int userFk = myRs.getInt("userFk");
+			String message = "Doctor " + firstName + " " + lastName + " added prescription for your appointment on "
+					+ slotDate + " . Check it out";
+			json.put("message", message);
+			json.put("prescriptionId", appointmentPrescriptionModel.getPrescriptionId());
+			json.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
+
+			NotificationsModel notification = new NotificationsModel(false, -1, userFk, userFromFk, message,
+					NotificationType.RESERVED_APPOINTMENT,
+					"/appointment_prescription/" + appointmentPrescriptionModel.getPrescriptionId());
+			notificationModel.add(notification);
+			addNotification(notificationModel);
+			notificationModel.clear();
+			myStmt.close();
+
+			messagingTemplate.convertAndSend("/topic/appointmentPrescription/" + userFk, json.toString());
+			JSONObject jsonReturned = new JSONObject();
+			jsonReturned.put("prescriptionId", appointmentPrescriptionModel.getPrescriptionId());
+			jsonReturned.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
+			jsonReturned.put("prescriptionDescription", appointmentPrescriptionModel.getPrescriptionDescription());
+
+			jsonResponse.put("message", "Appointment Prescription Updated Successfully");
+			jsonResponse.put("result", jsonReturned);
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+
+		return null;
 
 	}
 
@@ -1178,22 +1240,23 @@ public class BusinessAccountController {
 					+ ")  as fv ON fv.favoriteBusinessAccountFk = temp.businessAccountId";
 		}
 		if (globalSearchModel.getSpecialityFk() != -1) {
-			appendWhere = false;
 			query += " where st.specialityId=" + globalSearchModel.getSpecialityFk();
+			appendWhere = false;
+
 		}
 
 		if (globalSearchModel.getMinPrice() != -1 && globalSearchModel.getMaxPrice() != -1
 				&& !Double.isNaN(globalSearchModel.getMinPrice()) && !Double.isNaN(globalSearchModel.getMaxPrice())) {
-			appendWhere = false;
 
-			query += (appendWhere ? " where " : " and ") + "  st.servicePrice >=  " + globalSearchModel.getMinPrice()
-					+ " and st.servicePrice <= " + globalSearchModel.getMaxPrice();
+			query += (appendWhere ? " where " : " and ") + "  srt.servicePrice >=  " + globalSearchModel.getMinPrice()
+					+ " and srt.servicePrice <= " + globalSearchModel.getMaxPrice();
+			appendWhere = false;
 
 		}
 		if (globalSearchModel.getMinAvailability() != null && globalSearchModel.getMaxAvailability() != null) {
-			query += (appendWhere ? " where " : " and ") + " basst.slotStartTime >=  "
-					+ globalSearchModel.getMinAvailability() + " and baast.slotEndTime <= "
-					+ globalSearchModel.getMaxAvailability();
+			query += (appendWhere ? " where " : " and ") + " basst.slotStartTime >=  '"
+					+ globalSearchModel.getMinAvailability() + "' and basst.slotEndTime <= '"
+					+ globalSearchModel.getMaxAvailability() + "'";
 		}
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1206,7 +1269,7 @@ public class BusinessAccountController {
 				JSONObject userDetails = new JSONObject();
 				JSONObject userSchedule = new JSONObject();
 				int businessAccountId = myRs.getInt("businessAccountId");
-				userSchedule.put("servicePrice", myRs.getString("servicePrice"));
+				userSchedule.put("servicePrice", myRs.getInt("servicePrice"));
 				userSchedule.put("serviceName", myRs.getString("serviceName"));
 				userSchedule.put("serviceId", myRs.getInt("serviceId"));
 				userSchedule.put("slotDate", myRs.getDate("slotDate"));

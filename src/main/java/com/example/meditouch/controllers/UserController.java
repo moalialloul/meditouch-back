@@ -580,6 +580,33 @@ public class UserController {
 	}
 
 	// passed
+	@GetMapping("/getSpecialities")
+	public ResponseEntity<Object> getSpecialities() throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "select * from  specialities_table";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		ResultSet rs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (rs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("specialityId", rs.getInt("specialityId"));
+			json.put("specialityName", rs.getString("specialityName"));
+			json.put("specialityDescription", rs.getString("specialityDescription"));
+			jsonArray.put(json);
+		}
+
+		jsonResponse.put("message", "Specialities");
+		jsonResponse.put("specialities", jsonArray);
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@PostMapping("/postponeAppointment")
 	public ResponseEntity<Object> postponeAppointment(@RequestBody PostponeAppointmentModel postponeAppointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -904,47 +931,67 @@ public class UserController {
 	public ResponseEntity<Object> registerAppointment(@RequestBody AppointmentModel appointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "update business_account_schedule_slots_table set isReserved = 1 where slotId=?";
+		String query = "select isReserved from business_account_schedule_slots_table where slotId=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, appointmentModel.getSlotFk());
-		myStmt.executeUpdate();
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			boolean isReserved = rs.getBoolean("isReserved");
+			if (!isReserved) {
+				query = "update business_account_schedule_slots_table set isReserved = 1 where slotId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setInt(1, appointmentModel.getSlotFk());
+				myStmt.executeUpdate();
 
-		query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
+				query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
-		myStmt.setInt(1, appointmentModel.getSlotFk());
-		myStmt.setInt(2, appointmentModel.getBusinessAccountFk());
-		myStmt.setInt(3, appointmentModel.getUserFk());
-		myStmt.setInt(4, appointmentModel.getServiceFk());
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query,
+						Statement.RETURN_GENERATED_KEYS);
+				myStmt.setInt(1, appointmentModel.getSlotFk());
+				myStmt.setInt(2, appointmentModel.getBusinessAccountFk());
+				myStmt.setInt(3, appointmentModel.getUserFk());
+				myStmt.setInt(4, appointmentModel.getServiceFk());
 
-		myStmt.executeUpdate();
+				myStmt.executeUpdate();
 
-		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
-			if (generatedKeys.next()) {
-				int id = generatedKeys.getInt(1);
-				appointmentModel.setAppointmentId(id);
+				try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
+					if (generatedKeys.next()) {
+						int id = generatedKeys.getInt(1);
+						appointmentModel.setAppointmentId(id);
 
-				JSONObject json = new JSONObject();
-				json.put("type", "ADD");
-				json.put("appointment", appointmentModel);
-				JSONObject reservedSlot = new JSONObject();
-				reservedSlot.put("reservedSlot", appointmentModel.getSlotFk());
-				messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
-						json.toString());
-				messagingTemplate.convertAndSend("/topic/reservedSlots/", reservedSlot.toString());
-				Gson gson = new Gson();
-				String appointmentJson = gson.toJson(appointmentModel);
-				JsonObject jsonObject = JsonParser.parseString(appointmentJson).getAsJsonObject();
-				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-				jsonResponse.put("message", "Appointment Added successfully");
-				jsonResponse.put("appointment", jsonReturned);
-				jsonResponse.put("responseCode", 200);
+						JSONObject json = new JSONObject();
+						json.put("type", "ADD");
+						json.put("appointment", appointmentModel);
+						JSONObject reservedSlot = new JSONObject();
+						reservedSlot.put("reservedSlot", appointmentModel.getSlotFk());
+						messagingTemplate.convertAndSend(
+								"/topic/appointment/" + appointmentModel.getBusinessAccountFk(), json.toString());
+
+						messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getUserFk(),
+								json.toString());
+						messagingTemplate.convertAndSend("/topic/reservedSlots/", reservedSlot.toString());
+						Gson gson = new Gson();
+						String appointmentJson = gson.toJson(appointmentModel);
+						JsonObject jsonObject = JsonParser.parseString(appointmentJson).getAsJsonObject();
+						JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(Collectors
+								.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+						jsonResponse.put("message", "Appointment Added successfully");
+						jsonResponse.put("appointment", jsonReturned);
+						jsonResponse.put("responseCode", 200);
+						myStmt.close();
+
+						return ResponseEntity.ok(jsonResponse.toString());
+					}
+				}
+			} else {
+				jsonResponse.put("message", "Slot Already taken");
+				jsonResponse.put("responseCode", -1);
 				myStmt.close();
 
 				return ResponseEntity.ok(jsonResponse.toString());
 			}
 		}
+
 		return null;
 
 	}
