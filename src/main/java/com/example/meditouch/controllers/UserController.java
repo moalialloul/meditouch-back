@@ -8,6 +8,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
@@ -53,6 +54,7 @@ import models.SubscriptionModel;
 import models.SurveyAnswersModel;
 import models.SurveyModel;
 import models.SurveyQuestionAnswersModel;
+import models.Test;
 import models.TokenModel;
 import models.UpdatePasswordModel;
 import models.UserModel;
@@ -289,7 +291,7 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setString(1, blogModel.getBlogType());
-		myStmt.setTimestamp(2, blogModel.getBlogDate());
+		myStmt.setTimestamp(2, Timestamp.valueOf(blogModel.getBlogDate()));
 		myStmt.setString(3, blogModel.getBlogTitle());
 		myStmt.setString(4, blogModel.getBlogUrl());
 		myStmt.setInt(5, blogModel.getBlogId());
@@ -336,7 +338,7 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setString(1, blogModel.getBlogType());
-		myStmt.setTimestamp(2, blogModel.getBlogDate());
+		myStmt.setTimestamp(2, Timestamp.valueOf(blogModel.getBlogDate()));
 		myStmt.setString(3, blogModel.getBlogTitle());
 		myStmt.setString(4, blogModel.getBlogUrl());
 
@@ -1009,11 +1011,13 @@ public class UserController {
 		ResultSet rs = selectStmt.executeQuery();
 		if (rs.next()) {
 			Timestamp appointmentActualStartTime = rs.getTimestamp("appointmentActualStartTime");
-			Timestamp appointmentActualStartTimeNewValue = appointmentModel.getAppointmentActualStartTime();
+			Timestamp appointmentActualStartTimeNewValue = Timestamp
+					.valueOf(appointmentModel.getAppointmentActualStartTime());
 			boolean isCancelled = rs.getBoolean("isCancelled");
 			boolean isCancelledNewValue = appointmentModel.getIsCancelled();
 			Timestamp appointmentActualEndTime = rs.getTimestamp("appointmentActualEndTime");
-			Timestamp appointmentActualEndTimeNewValue = appointmentModel.getAppointmentActualEndTime();
+			Timestamp appointmentActualEndTimeNewValue = Timestamp
+					.valueOf(appointmentModel.getAppointmentActualEndTime());
 
 			if (!Objects.equals(appointmentActualStartTime, appointmentActualStartTimeNewValue)) {
 				JSONObject json = new JSONObject();
@@ -1048,8 +1052,8 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
-		myStmt.setTimestamp(1, appointmentModel.getAppointmentActualStartTime());
-		myStmt.setTimestamp(2, appointmentModel.getAppointmentActualEndTime());
+		myStmt.setTimestamp(1, Timestamp.valueOf(appointmentModel.getAppointmentActualStartTime()));
+		myStmt.setTimestamp(2, Timestamp.valueOf(appointmentModel.getAppointmentActualEndTime()));
 		myStmt.setString(3, appointmentModel.getAppointmentStatus().toString());
 		myStmt.setBoolean(4, appointmentModel.getIsApproved());
 		myStmt.setBoolean(5, appointmentModel.getIsCancelled());
@@ -1879,6 +1883,7 @@ public class UserController {
 				Statement.RETURN_GENERATED_KEYS);
 		String hashedPassword = PasswordUtils.hashPassword(user.getPassword());
 		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+		LocalDateTime ldt = LocalDateTime.now();
 
 		myStmt.setString(1, user.getFirstName());
 		myStmt.setString(2, user.getLastName());
@@ -1888,7 +1893,7 @@ public class UserController {
 		myStmt.setString(6, user.getUserLanguage());
 		myStmt.setString(7, user.getProfilePicture());
 		myStmt.setTimestamp(8, timestamp);
-		user.setRegistrationDate(timestamp);
+		user.setRegistrationDate(ldt);
 		myStmt.executeUpdate();
 
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
@@ -1911,4 +1916,46 @@ public class UserController {
 			}
 		}
 	}
+
+	// passed
+	@PostMapping("/test")
+	public ResponseEntity<Object> test(@RequestBody Test test)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "insert into test_dates (date) values(?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt.setTimestamp(1, Timestamp.valueOf(test.getDate()));
+		myStmt.executeUpdate();
+
+		jsonResponse.put("message", "added");
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@GetMapping("/getTest")
+	public ResponseEntity<Object> getTest() throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "select *  from test_dates ";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		ResultSet rs = myStmt.executeQuery();
+		while (rs.next()) {
+			jsonResponse.put("message", rs.getTimestamp("date"));
+			jsonResponse.put("responseCode", 200);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+
+		return null;
+
+	}
+
 }

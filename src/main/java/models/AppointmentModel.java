@@ -1,6 +1,7 @@
 package models;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import Enums.AppointmentStatus;
 import Enums.UserRoles;
@@ -11,8 +12,8 @@ public class AppointmentModel {
 	int businessAccountFk;
 	int userFk;
 	int serviceFk;
-	Timestamp appointmentActualStartTime;
-	Timestamp appointmentActualEndTime;
+	LocalDateTime appointmentActualStartTime;
+	LocalDateTime appointmentActualEndTime;
 	AppointmentStatus appointmentStatus;
 	boolean isApproved = false;
 	boolean isCancelled = false;
@@ -29,7 +30,7 @@ public class AppointmentModel {
 		super();
 	}
 	public AppointmentModel(int appointmentId, int slotFk, int businessAccountFk, int userFk, int serviceFk,
-			Timestamp appointmentActualStartTime, Timestamp appointmentActualEndTime,
+			LocalDateTime appointmentActualStartTime, LocalDateTime appointmentActualEndTime,
 			AppointmentStatus appointmentStatus, boolean isApproved, boolean isCancelled, UserRoles cancelledBy) {
 		super();
 		this.appointmentId = appointmentId;
@@ -74,16 +75,16 @@ public class AppointmentModel {
 	public void setServiceFk(int serviceFk) {
 		this.serviceFk = serviceFk;
 	}
-	public Timestamp getAppointmentActualStartTime() {
+	public LocalDateTime getAppointmentActualStartTime() {
 		return appointmentActualStartTime;
 	}
-	public void setAppointmentActualStartTime(Timestamp appointmentActualStartTime) {
+	public void setAppointmentActualStartTime(LocalDateTime appointmentActualStartTime) {
 		this.appointmentActualStartTime = appointmentActualStartTime;
 	}
-	public Timestamp getAppointmentActualEndTime() {
+	public LocalDateTime getAppointmentActualEndTime() {
 		return appointmentActualEndTime;
 	}
-	public void setAppointmentActualEndTime(Timestamp appointmentActualEndTime) {
+	public void setAppointmentActualEndTime(LocalDateTime appointmentActualEndTime) {
 		this.appointmentActualEndTime = appointmentActualEndTime;
 	}
 	public AppointmentStatus getAppointmentStatus() {

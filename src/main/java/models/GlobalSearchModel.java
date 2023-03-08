@@ -1,6 +1,7 @@
 package models;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 public class GlobalSearchModel {
 	int specialityFk = -1;
@@ -12,25 +13,25 @@ public class GlobalSearchModel {
 
 	double myLongitude = -1;
 	double myLatitude = -1;
-	Timestamp minAvailability;
-	Timestamp maxAvailability;
+	LocalDateTime minAvailability;
+	LocalDateTime maxAvailability;
 
-	public Timestamp getMaxAvailability() {
+	public LocalDateTime getMaxAvailability() {
 		return maxAvailability;
 	}
 
-	public void setMaxAvailability(Timestamp maxAvailability) {
+	public void setMaxAvailability(LocalDateTime maxAvailability) {
 		this.maxAvailability = maxAvailability;
 	}
 
-	Timestamp minDateTime;
-	Timestamp maxDateTime;
+	LocalDateTime minDateTime;
+	LocalDateTime maxDateTime;
 
-	public Timestamp getMaxDateTime() {
+	public LocalDateTime getMaxDateTime() {
 		return maxDateTime;
 	}
 
-	public void setMaxDateTime(Timestamp maxDateTime) {
+	public void setMaxDateTime(LocalDateTime maxDateTime) {
 		this.maxDateTime = maxDateTime;
 	}
 
@@ -75,8 +76,8 @@ public class GlobalSearchModel {
 	}
 
 	public GlobalSearchModel(int specialityFk, double minDistance, double maxDistance, double minPrice, double maxPrice,
-			double myLatitude, double myLongitude, Timestamp minDateTime, Timestamp maxDateTime,
-			Timestamp minAvailability, Timestamp maxAvailability, int userId) {
+			double myLatitude, double myLongitude, LocalDateTime minDateTime, LocalDateTime maxDateTime,
+			LocalDateTime minAvailability, LocalDateTime maxAvailability, int userId) {
 		super();
 		this.specialityFk = specialityFk;
 		this.minDistance = minDistance;
@@ -114,11 +115,11 @@ public class GlobalSearchModel {
 				+ ",\"maxAvailability\":" + maxAvailability + ",\"userId\":"+userId+"}";
 	}
 
-	public Timestamp getMinAvailability() {
+	public LocalDateTime getMinAvailability() {
 		return minAvailability;
 	}
 
-	public void setMinAvailability(Timestamp minAvailability) {
+	public void setMinAvailability(LocalDateTime minAvailability) {
 		this.minAvailability = minAvailability;
 	}
 
