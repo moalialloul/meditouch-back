@@ -10,7 +10,7 @@ public class GlobalSearchModel {
 	int userId = -1;
 	double minPrice = -1;
 	double maxPrice = -1;
-
+	int isFavorite = -2;
 	double myLongitude = -1;
 	double myLatitude = -1;
 	LocalDateTime minAvailability;
@@ -77,7 +77,7 @@ public class GlobalSearchModel {
 
 	public GlobalSearchModel(int specialityFk, double minDistance, double maxDistance, double minPrice, double maxPrice,
 			double myLatitude, double myLongitude, LocalDateTime minDateTime, LocalDateTime maxDateTime,
-			LocalDateTime minAvailability, LocalDateTime maxAvailability, int userId) {
+			LocalDateTime minAvailability, LocalDateTime maxAvailability, int userId, int isFavorite) {
 		super();
 		this.specialityFk = specialityFk;
 		this.minDistance = minDistance;
@@ -92,6 +92,7 @@ public class GlobalSearchModel {
 		this.minAvailability = minAvailability;
 		this.maxAvailability = maxAvailability;
 		this.userId = userId;
+		this.isFavorite = isFavorite;
 	}
 
 	public int getUserId() {
@@ -112,7 +113,15 @@ public class GlobalSearchModel {
 				+ maxDistance + ", \"minPrice\":" + minPrice + ", \"maxPrice\":" + maxPrice + ", \"myLatitude\" : "
 				+ myLatitude + ", \"myLongitude\":" + myLongitude + ", \"minDateTime\":" + minDateTime
 				+ ",\"maxDateTime\":" + maxDateTime + ",\"minAvailability\":" + minAvailability
-				+ ",\"maxAvailability\":" + maxAvailability + ",\"userId\":"+userId+"}";
+				+ ",\"maxAvailability\":" + maxAvailability + ",\"userId\":"+userId+",\"isFavorite\":"+isFavorite+"}";
+	}
+
+	public int getIsFavorite() {
+		return isFavorite;
+	}
+
+	public void setIsFavorite(int isFavorite) {
+		this.isFavorite = isFavorite;
 	}
 
 	public LocalDateTime getMinAvailability() {

@@ -1308,7 +1308,8 @@ public class BusinessAccountController {
 		if (myRs.next()) {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
-		query = "SELECT " + (globalSearchModel.getUserId() == -1 ? "" : "COALESCE(fv.favoriteId, -1) as favoriteId,")
+		query = "select * from (SELECT "
+				+ (globalSearchModel.getUserId() == -1 ? "" : "COALESCE(fv.favoriteId, -1) as favoriteId,")
 				+ " temp.userId,srt.servicePrice, srt.serviceName,srt.serviceId,basst.slotId,basst.isReserved, basst.slotDate, basst.slotStartTime, basst.slotEndTime, basst.isLocked,temp.biography, temp.clinicLocation,temp.clinicLocationLongitude,temp.clinicLocationLatitude,  temp.businessAccountId,  temp.firstName, temp.lastName, temp.userEmail, temp.profilePicture, st.specialityName, st.specialityDescription    from (select *  from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit "
 				+ recordsByPage + " OFFSET " + ((pageNumber - 1) * recordsByPage) + ") as temp join specialities_table "
 				+ " st on temp.specialityFk = st.specialityId join business_account_schedule_table bast "
@@ -1321,7 +1322,6 @@ public class BusinessAccountController {
 		}
 		if (globalSearchModel.getSpecialityFk() != -1) {
 			query += " and st.specialityId=" + globalSearchModel.getSpecialityFk();
-
 		}
 
 		if (globalSearchModel.getMinPrice() != -1 && globalSearchModel.getMaxPrice() != -1
@@ -1334,6 +1334,11 @@ public class BusinessAccountController {
 		if (globalSearchModel.getMinAvailability() != null && globalSearchModel.getMaxAvailability() != null) {
 			query += " and basst.slotStartTime >=  '" + globalSearchModel.getMinAvailability()
 					+ "' and basst.slotEndTime <= '" + globalSearchModel.getMaxAvailability() + "'";
+
+		}
+		query += ") as total";
+		if (globalSearchModel.getIsFavorite() != -2 && globalSearchModel.getUserId() != -1) {
+			query += " where total.favoriteId " + (globalSearchModel.getIsFavorite() == -1 ? " = -1 " : " != -1");
 		}
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);

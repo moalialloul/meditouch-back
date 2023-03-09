@@ -2,6 +2,7 @@ package com.example.meditouch.controllers;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -854,23 +855,31 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				communityPostCommentModel.setCommentId(id);
+				query = "select * from users_table where userId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setInt(1, communityPostCommentModel.getUserFk());
+				ResultSet rs = myStmt.executeQuery();
+				if (rs.next()) {
+					JSONObject json = new JSONObject();
+					json.put("userFk", communityPostCommentModel.getUserFk());
+					json.put("postId", communityPostCommentModel.getPostFk());
+					json.put("commentDescription", communityPostCommentModel.getCommentDescription());
+					json.put("commentId", id);
+					json.put("firstName", rs.getString("firstName"));
+					json.put("lastName", rs.getString("lastName"));
+					json.put("userEmail", rs.getString("userEmail"));
+					json.put("profilePicture", rs.getString("profilePicture"));
 
-				JSONObject json = new JSONObject();
-				json.put("type", "ADD");
-				json.put("communityPostComment", communityPostCommentModel);
+					messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
 
-				messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
-				Gson gson = new Gson();
-				String communityPostCommentModelJson = gson.toJson(communityPostCommentModel);
-				JsonObject jsonObject = JsonParser.parseString(communityPostCommentModelJson).getAsJsonObject();
-				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-				jsonResponse.put("message", "Comment Added successfully");
-				jsonResponse.put("post", jsonReturned);
-				jsonResponse.put("responseCode", 200);
-				myStmt.close();
+					jsonResponse.put("message", "Comment Added successfully");
+					jsonResponse.put("post", json);
+					jsonResponse.put("responseCode", 200);
+					myStmt.close();
 
-				return ResponseEntity.ok(jsonResponse.toString());
+					return ResponseEntity.ok(jsonResponse.toString());
+				}
+
 			}
 		}
 		return null;
@@ -895,11 +904,16 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
-		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk ";
+		query = "SELECT" + "    p.postId,    COUNT(c.commentId) AS commentCount,"
+				+ "    u.firstName, u.lastName,u.userEmail, u.profilePicture, p.postService, p.postDescription FROM "
+				+ "    community_posts_table p" + "    LEFT JOIN posts_comments_table c ON p.postid = c.postFk"
+				+ "    JOIN users_table u ON p.userFk = u.userId";
+
 		if (searchText != null) {
 			query += " where cpt.postService LIKE '%" + searchText + "%' or cpt.postDescription LIKE '%" + searchText
 					+ "%'";
 		}
+		query += " GROUP BY" + "    p.postid, u.firstName";
 		query += " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -910,6 +924,8 @@ public class UserController {
 			JSONObject json = new JSONObject();
 			json.put("postService", myRs.getString("postService"));
 			json.put("postDescription", myRs.getString("postDescription"));
+			json.put("postId", myRs.getInt("postId"));
+			json.put("commentCount", myRs.getInt("commentCount"));
 
 			json.put("firstName", myRs.getString("firstName"));
 			json.put("lastName", myRs.getString("lastName"));
@@ -1955,6 +1971,75 @@ public class UserController {
 		}
 
 		return null;
+
+	}
+
+	// passed
+	@GetMapping("/getUserStatistics/{userFk}")
+	public ResponseEntity<Object> getUserStatistics(@PathVariable("userFk") int userFk)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "Select * from (select count(appointmentId) as total_appointments from appointments_table where userFk="
+				+ userFk
+				+ ") as p1 JOIN (SELECT COUNT(appointmentId) as total_done_appointments from appointments_table where appointmentActualStartTime is not null and appointmentActualEndTime is not null where userFk="
+				+ userFk
+				+ ") as p2 JOIN (SELECT COUNT(appointmentId) as total_rejected_appointments from appointments_table where appointmentStatus='REJECTED' and userFk="
+				+ userFk
+				+ ") as p3 JOIN (SELECT COUNT(appointmentId) as total_accepted_appointments from appointments_table where appointmentStatus='ACCEPTED' and userFk="
+				+ userFk + ") as p4";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		ResultSet myRs = myStmt.executeQuery();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("totalAppointments", myRs.getInt("total_appointments"));
+			json.put("totalDoneAppointments", myRs.getInt("total_done_appointments"));
+			json.put("totalRejectedAppointments", myRs.getInt("total_rejected_appointments"));
+			json.put("totalAcceptedAppointments", myRs.getInt("total_accepted_appointments"));
+
+			jsonResponse.put("message", "Results Returned");
+			jsonResponse.put("result", json);
+
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+
+		}
+		return null;
+
+	}
+
+	@GetMapping("/getUserAppointmentsStatistics/{userFk}/{fromDate}/{toDate}")
+	public ResponseEntity<Object> getUserAppointmentsStatistics(@PathVariable("userFk") int userFk,
+			@PathVariable("fromDate") Date fromDate, @PathVariable("toDate") Date toDate)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"SELECT sum(a.isCancelled = 1) as num_appointments_cancelled,sum(a.isCancelled = 0) as num_appointments_not_cancelled, sum(a.isApproved = 1) as num_appointments_approved ,sum(a.isApproved = 0) as num_appointments_not_approved, DATE(basst.slotDate) AS appointment_date, COUNT(a.appointmentId) AS num_appointments FROM appointments_table a INNER JOIN business_account_schedule_slots_table basst ON a.slotFk = basst.slotId where date(basst.slotDate) between '"
+						+ fromDate + "' and '" + toDate + "' and a.userFk=? GROUP BY DATE(basst.slotDate)" + "");
+		myStmt.setInt(1, userFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("appointmentDate", myRs.getDate("appointment_date"));
+			json.put("numAppointments", myRs.getInt("num_appointments"));
+			json.put("numAppointmentsCancelled", myRs.getInt("num_appointments_cancelled"));
+			json.put("numAppointmentsNotCancelled", myRs.getInt("num_appointments_not_cancelled"));
+			json.put("numAppointmentsNotApproved", myRs.getInt("num_appointments_not_approved"));
+			json.put("numAppointmentsApproved", myRs.getInt("num_appointments_approved"));
+
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "Results Returned");
+		jsonResponse.put("results", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 
