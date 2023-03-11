@@ -1278,10 +1278,19 @@ public class UserController {
 				JSONObject socketJson = new JSONObject();
 				socketJson.put("type", "ADD");
 				socketJson.put("favoriteDoctorInfo", json);
-
+				query = "select COALESCE(onFavorite,1) from notifications_settings ns join users_table ut on ut.userId=ns.userFk join "
+						+ "business_account_table bat on bat.userFk=ut.userId where bat.businessAccountId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setInt(1, favoriteModel.getBusinessAccountFk());
+				ResultSet rs = myStmt.executeQuery();
+				if (rs.next()) {
+					if (rs.getBoolean("onFavorite") == true) {
+						messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + favoriteModel.getUserFk(),
+								socketJson.toString());
+					}
+				}
 				myStmt.close();
-				messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + favoriteModel.getUserFk(),
-						socketJson.toString());
+
 				return ResponseEntity.ok(jsonResponse.toString());
 			}
 		}
@@ -1704,7 +1713,6 @@ public class UserController {
 			json.put("password", myRs.getString("password"));
 			json.put("isVerified", myRs.getBoolean("isVerified"));
 			json.put("numberOfLoginTrials", myRs.getInt("numberOfLoginTrials"));
-			json.put("registrationDate", myRs.getDate("registrationDate"));
 			json.put("isApproved", myRs.getBoolean("isApproved"));
 			json.put("isLocked", myRs.getBoolean("isLocked"));
 			json.put("userRole", myRs.getString("userRole"));

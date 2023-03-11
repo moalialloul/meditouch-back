@@ -32,26 +32,26 @@ public class AppointmentsReminder {
 				Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 
 				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-						"select bat.clinicLocation as clinicLocation,ut.profilePicture, ut2.userId as userToFk, ut.userId as userFromFk, ut.firstName as firstName, ut.lastName as lastName, ut.userEmail as userEmail,basst.slotStartTime as slotStartTime from appointments_table apt right join business_account_schedule_slots_table basst on basst.slotId=apt.slotFk right join business_account_table bat on bat.businessAccountId=apt.businessAccountFk right join users_table ut on ut.userid=bat.userFk right join users_table ut2 on ut2.userId=apt.userFk where basst.slotStartTime > ?");
+						"select COALESCE(onAppointmentReminder,-1) as onAppointmentReminder, bat.clinicLocation as clinicLocation,ut.profilePicture, ut2.userId as userToFk, ut.userId as userFromFk, ut.firstName as firstName, ut.lastName as lastName, ut.userEmail as userEmail,basst.slotStartTime as slotStartTime from appointments_table apt left join notifications_settings ns on ns.userFk=apt.userFk right join business_account_schedule_slots_table basst on basst.slotId=apt.slotFk right join business_account_table bat on bat.businessAccountId=apt.businessAccountFk right join users_table ut on ut.userid=bat.userFk right join users_table ut2 on ut2.userId=apt.userFk where basst.slotStartTime > ?");
 				myStmt.setTimestamp(1, timestamp);
 				ResultSet rs = myStmt.executeQuery();
 				while (rs.next()) {
+					if (rs.getBoolean("onAppointmentReminder")) {
+						JSONObject jsonReturned = new JSONObject();
+						jsonReturned.put("userFromFk", rs.getInt("userFromFk"));
+						jsonReturned.put("userToFk", rs.getInt("userToFk"));
+						jsonReturned.put("notificationText",
+								"Reminder for your appointment with doctor " + rs.getString("firstName") + " "
+										+ rs.getString("lastName") + " on " + rs.getTimestamp("slotStartTime") + " in"
+										+ rs.getString("clinicLocation"));
+						jsonReturned.put("notificationType", "APPOINTMENT");
+						jsonReturned.put("isOpen", false);
+						jsonReturned.put("notificationUrl", "");
+						jsonReturned.put("userFromProfile", rs.getString("profilePicture"));
 
-					JSONObject jsonReturned = new JSONObject();
-					jsonReturned.put("userFromFk", rs.getInt("userFromFk"));
-					jsonReturned.put("userToFk", rs.getInt("userToFk"));
-					jsonReturned.put("notificationText",
-							"Reminder for your appointment with doctor " + rs.getString("firstName") + " "
-									+ rs.getString("lastName") + " on " + rs.getTimestamp("slotStartTime") + " in"
-									+ rs.getString("clinicLocation"));
-					jsonReturned.put("notificationType", "APPOINTMENT");
-					jsonReturned.put("isOpen", false);
-					jsonReturned.put("notificationUrl", "");
-					jsonReturned.put("userFromProfile", rs.getString("profilePicture"));
-
-					messagingTemplate.convertAndSend("/topic/appointmentsReminder/" + rs.getInt("userToFk"),
-							jsonReturned.toString());
-
+						messagingTemplate.convertAndSend("/topic/appointmentsReminder/" + rs.getInt("userToFk"),
+								jsonReturned.toString());
+					}
 				}
 
 			} catch (SQLException | IOException e) {
