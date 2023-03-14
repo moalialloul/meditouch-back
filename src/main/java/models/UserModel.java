@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import Enums.UserRoles;
 
 public class UserModel {
-	int userId;
+	int userId = -1;
 	String firstName;
 	String lastName;
 	String userEmail;

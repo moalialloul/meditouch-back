@@ -48,6 +48,7 @@ import models.CommunityPostModel;
 import models.ContactUsModel;
 import models.FavoriteModel;
 import models.FeedbackModel;
+import models.MedicalInformationModel;
 import models.NotificationsModel;
 import models.PostponeAppointmentModel;
 import models.ReservationSlot;
@@ -618,11 +619,19 @@ public class UserController {
 		String query = "update appointments_table set slotFk=?, isApproved=0 where appointmentId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, postponeAppointmentModel.getSlotFk());
+		myStmt.setInt(1, postponeAppointmentModel.getNewSlotFk());
 
 		myStmt.setInt(2, postponeAppointmentModel.getAppointmentId());
 		myStmt.executeUpdate();
+		query = "update business_account_schedule_slots_table set isReserved=0 where slotId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, postponeAppointmentModel.getOldSlotFk());
+		myStmt.executeUpdate();
 
+		query = "update business_account_schedule_slots_table set isReserved=1 where slotId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, postponeAppointmentModel.getNewSlotFk());
+		myStmt.executeUpdate();
 		JSONObject json = new JSONObject();
 		json.put("type", "POSTPONE");
 		json.put("appointment", postponeAppointmentModel);
@@ -1603,6 +1612,61 @@ public class UserController {
 	}
 
 	// passed
+	@GetMapping("/getMedicalInformation/{userFk}")
+	public ResponseEntity<Object> getMedicalInformation(@PathVariable("userFk") int userFk)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select * from medical_information where userFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONObject json = new JSONObject();
+		if (myRs.next()) {
+			json.put("height", myRs.getInt("height"));
+			json.put("weight", myRs.getInt("weight"));
+
+			json.put("diseasesDescription", myRs.getString("diseasesDescription"));
+			json.put("vaccinationDescription", myRs.getString("vaccinationDescription"));
+
+		}
+		jsonResponse.put("message", "Medical Information");
+		jsonResponse.put("medical_information", json);
+
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@PutMapping("/setMedicalInformation")
+	public ResponseEntity<Object> setMedicalInformation(@RequestBody MedicalInformationModel medicalInformationModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update medical_information set height=?, weight=?, diseasesDescription=?,vaccinationDescription=? where userFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, medicalInformationModel.getHeight());
+		myStmt.setInt(2, medicalInformationModel.getWeight());
+		myStmt.setString(3, medicalInformationModel.getDiseasesDescription());
+		myStmt.setString(4, medicalInformationModel.getVaccinationDescription());
+		myStmt.setInt(5, medicalInformationModel.getUserFk());
+
+		myStmt.executeUpdate();
+
+		jsonResponse.put("message", "Medical Information Updated Successully");
+
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@PutMapping("/forgetPassword")
 	public ResponseEntity<Object> forgetPassword(@RequestBody UserModel user)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -1796,6 +1860,27 @@ public class UserController {
 	public ResponseEntity<Object> generateToken(@RequestBody UserModel user,
 			@PathVariable("tokenType") String tokenType) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
+
+		if (user.getUserId() == -1) {
+			if (isUserEmailExist(user)) {
+				String query = "select * from users_table where userEmail=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setString(1, user.getUserEmail());
+
+				ResultSet myRs = myStmt.executeQuery();
+				if (myRs.next()) {
+					user.setUserId(myRs.getInt("userId"));
+				} else {
+					jsonResponse.put("message", "User doesnot Exist");
+					jsonResponse.put("responseCode", -1);
+					return ResponseEntity.ok(jsonResponse.toString());
+				}
+			} else {
+				jsonResponse.put("message", "User doesnot Exist");
+				jsonResponse.put("responseCode", -1);
+				return ResponseEntity.ok(jsonResponse.toString());
+			}
+		}
 		String query = "insert into "
 				+ (tokenType.equals(TokenType.REGISTRATION.toString()) ? "tokens_table" : "password_tokens_table")
 				+ "(userFk, tokenValue, expiryDate) values ( ?, ?,?)";
@@ -1814,6 +1899,7 @@ public class UserController {
 
 		myStmt.executeUpdate();
 		myStmt.close();
+		jsonResponse.put("userId", user.getUserId());
 
 		jsonResponse.put("message", "Check your email");
 		jsonResponse.put("responseCode", 200);
@@ -1822,14 +1908,74 @@ public class UserController {
 	}
 
 	// passed
-	@PutMapping("/verifyUser/{userId}")
-	public ResponseEntity<Object> verifyUser(@PathVariable("userId") int userId) throws SQLException, IOException {
+	@PutMapping("/verifyUser")
+	public ResponseEntity<Object> verifyUser(@RequestBody UserModel user) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "update users_table set isVerified = true where userId=?";
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, userId);
+		String query = "update users_table set isVerified = true where "
+				+ (user.getUserId() == -1 ? "userEmail=?" : "userId=?");
+
+		if (user.getUserId() == -1) {
+			if (isUserEmailExist(user)) {
+				String query2 = "select businessAccountId, isVerified, userId, userRole from users_table ut  left join business_account_table bat on bat.userFk=ut.userId where userEmail=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query2);
+
+				myStmt.setString(1, user.getUserEmail());
+				ResultSet rs = myStmt.executeQuery();
+				if (rs.next()) {
+					boolean isVerified=rs.getBoolean("isVerified");
+					if (isVerified) {
+						String userRole = rs.getString("userRole");
+						jsonResponse.put("userRole", userRole);
+						jsonResponse.put("businessAccountId", rs.getInt("businessAccountId"));
+
+						jsonResponse.put("message", "User Already Verified");
+						jsonResponse.put("responseCode", -1);
+						return ResponseEntity.ok(jsonResponse.toString());
+					} else {
+						user.setUserId(rs.getInt("userId"));
+						myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+						myStmt.setString(1, user.getUserEmail());
+
+					}
+				}
+			} else {
+				jsonResponse.put("message", "User Email not found");
+				jsonResponse.put("responseCode", -1);
+				return ResponseEntity.ok(jsonResponse.toString());
+			}
+		} else {
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+			myStmt.setInt(1, user.getUserId());
+
+		}
 		myStmt.executeUpdate();
+		String query2 = "select * from users_table where " + (user.getUserId() == -1 ? "userEmail=?" : "userId=?");
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query2);
+
+		if (user.getUserId() == -1) {
+			myStmt.setString(1, user.getUserEmail());
+		} else {
+			myStmt.setInt(1, user.getUserId());
+
+		}
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			String userRole = rs.getString("userRole");
+			jsonResponse.put("userRole", userRole);
+			if (userRole.toString().equals("HEALTH_PROFESSIONAL")) {
+				String query3 = "select * from business_account_table where userFk=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query3);
+				myStmt.setInt(1, user.getUserId());
+				ResultSet rs2 = myStmt.executeQuery();
+				if (rs2.next()) {
+					jsonResponse.put("businessAccountId", rs2.getInt("businessAccountId"));
+
+				}
+			}
+		}
+
 		myStmt.close();
 
 		jsonResponse.put("message", "User is verified successfully");
@@ -1926,11 +2072,18 @@ public class UserController {
 				user.setUserId(id);
 
 				generatedKeys.close();
-				myStmt.close();
 				if (user.getUserRole() == UserRoles.HEALTH_PROFESSIONAL) {
 					BusinessAccountController
 							.registerBusinessAccount(new BusinessAccountModel(-1, id, 1, "", "", -1, -1));
+				} else {
+					String query = "insert into medical_information (userFk) values(?)";
+					myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+					myStmt.setInt(1, id);
+					myStmt.executeUpdate();
+
 				}
+				myStmt.close();
+
 				return generateToken(user, TokenType.REGISTRATION.toString());
 
 			} else {
@@ -1989,7 +2142,7 @@ public class UserController {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "Select * from (select count(appointmentId) as total_appointments from appointments_table where userFk="
 				+ userFk
-				+ ") as p1 JOIN (SELECT COUNT(appointmentId) as total_done_appointments from appointments_table where appointmentActualStartTime is not null and appointmentActualEndTime is not null where userFk="
+				+ ") as p1 JOIN (SELECT COUNT(appointmentId) as total_done_appointments from appointments_table where appointmentActualStartTime is not null and appointmentActualEndTime is not null and userFk="
 				+ userFk
 				+ ") as p2 JOIN (SELECT COUNT(appointmentId) as total_rejected_appointments from appointments_table where appointmentStatus='REJECTED' and userFk="
 				+ userFk
