@@ -639,6 +639,46 @@ public class UserController {
 		messagingTemplate.convertAndSend("/topic/appointment/" + postponeAppointmentModel.getBusinessAccountFk(),
 				json.toString());
 
+		query = "select * from reserved_slots_chosen_table" + " rst join business_account_schedule_slots_table basst"
+				+ " on basst.slotId = rst.slotFk join business_account_schedule_table bast"
+				+ " on bast.scheduleId = basst.scheduleFk join business_account_table bat"
+				+ " on bat.businessAccountId = bast.businessAccountFk join users_table ut"
+				+ " on ut.userId = bat.userFk " + "join specialities_table st on "
+				+ "st.specialityId = bat.specialityFk where rst.slotFk=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, postponeAppointmentModel.getOldSlotFk());
+		ResultSet myRs = myStmt.executeQuery();
+		JSONObject reservationJson = new JSONObject();
+		JSONObject jsonSocket = new JSONObject();
+
+		while (myRs.next()) {
+//			jsonSocket.put("userFromFk", rs.getInt("userFromFk"));
+//			jsonSocket.put("userToFk", rs.getInt("userToFk"));
+			jsonSocket.put("notificationText",
+					"The slot at " + myRs.getTimestamp("slotStartTime") + " is availabe now. You can reserve it.");
+			jsonSocket.put("notificationType", "FREE_APPOINTMENT");
+			jsonSocket.put("isOpen", false);
+			jsonSocket.put("notificationUrl", "");
+			jsonSocket.put("userFromProfile", myRs.getString("profilePicture"));
+			messagingTemplate.convertAndSend("/topic/notifications/" + postponeAppointmentModel.getUserFk(),
+					json.toString());
+			reservationJson.put("slotFk", myRs.getInt("slotFk"));
+			reservationJson.put("userFk", myRs.getInt("userFk"));
+			reservationJson.put("businessAccountId", myRs.getInt("businessAccountId"));
+			reservationJson.put("slotDate", myRs.getDate("slotDate"));
+			reservationJson.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
+			reservationJson.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
+			reservationJson.put("biography", myRs.getString("biography"));
+			reservationJson.put("clinicLocation", myRs.getString("clinicLocation"));
+			reservationJson.put("clinicLocationLongitude", myRs.getFloat("clinicLocationLongitude"));
+			reservationJson.put("clinicLocationLatitude", myRs.getFloat("clinicLocationLatitude"));
+			reservationJson.put("firstName", myRs.getString("firstName"));
+			reservationJson.put("lastName", myRs.getString("lastName"));
+			reservationJson.put("userEmail", myRs.getString("userEmail"));
+			reservationJson.put("profilePicture", myRs.getString("profilePicture"));
+			reservationJson.put("specialityName", myRs.getString("specialityName"));
+			reservationJson.put("specialityDescription", myRs.getString("specialityDescription"));
+		}
 		jsonResponse.put("message", "Appointment postponed successfully. Wait doctor approval");
 		jsonResponse.put("responseCode", 200);
 		myStmt.close();
@@ -994,8 +1034,35 @@ public class UserController {
 						messagingTemplate.convertAndSend(
 								"/topic/appointment/" + appointmentModel.getBusinessAccountFk(), json.toString());
 
-						messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getUserFk(),
+						messagingTemplate.convertAndSend(
+								"/topic/hpAppointment/" + appointmentModel.getBusinessAccountFk(), json.toString());
+						messagingTemplate.convertAndSend("/topic/patientAppointment/" + appointmentModel.getUserFk(),
 								json.toString());
+
+						query = "select * from users_table ut cross join business_account_schedule_slots_table basst where  userId=? and basst.slotId=?";
+						myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+						myStmt.setInt(1, appointmentModel.getUserFk());
+						myStmt.setInt(2, appointmentModel.getSlotFk());
+
+						ResultSet rs2 = myStmt.executeQuery();
+						if (rs2.next()) {
+							JSONObject jsonSocket = new JSONObject();
+							jsonSocket.put("userFromFk", appointmentModel.getUserFk());
+							jsonSocket.put("userToFk", rs.getInt("userId"));
+							jsonSocket.put("notificationText",
+									rs.getString("firstName") + " " + rs.getString("lastName")
+											+ " reserved an appointment on " + rs.getTimestamp("slotStartTime"));
+							jsonSocket.put("notificationType", "RESERVED_APPOINTMENT");
+							jsonSocket.put("isOpen", false);
+							jsonSocket.put("notificationUrl", "");
+							jsonSocket.put("userFromProfile", rs.getString("profilePicture"));
+
+							messagingTemplate.convertAndSend(
+									"/topic/notifications/" + appointmentModel.getBusinessAccountFk(),
+									jsonSocket.toString());
+							rs2.close();
+						}
+
 						messagingTemplate.convertAndSend("/topic/reservedSlots/", reservedSlot.toString());
 						Gson gson = new Gson();
 						String appointmentJson = gson.toJson(appointmentModel);
@@ -1035,24 +1102,31 @@ public class UserController {
 
 		ResultSet rs = selectStmt.executeQuery();
 		if (rs.next()) {
-			Timestamp appointmentActualStartTime = rs.getTimestamp("appointmentActualStartTime");
-			Timestamp appointmentActualStartTimeNewValue = Timestamp
-					.valueOf(appointmentModel.getAppointmentActualStartTime());
+
 			boolean isCancelled = rs.getBoolean("isCancelled");
 			boolean isCancelledNewValue = appointmentModel.getIsCancelled();
-			Timestamp appointmentActualEndTime = rs.getTimestamp("appointmentActualEndTime");
-			Timestamp appointmentActualEndTimeNewValue = Timestamp
-					.valueOf(appointmentModel.getAppointmentActualEndTime());
 
-			if (!Objects.equals(appointmentActualStartTime, appointmentActualStartTimeNewValue)) {
-				JSONObject json = new JSONObject();
-				json.put("message", "It's Your Turn. Doctor Is Waiting You");
-				messagingTemplate.convertAndSend("/topic/clinicTurn/" + appointmentModel.getUserFk(), json.toString());
+			if (appointmentModel.getAppointmentActualStartTime() != null) {
+				Timestamp appointmentActualStartTime = rs.getTimestamp("appointmentActualStartTime");
+				Timestamp appointmentActualStartTimeNewValue = Timestamp
+						.valueOf(appointmentModel.getAppointmentActualStartTime());
+				if (!Objects.equals(appointmentActualStartTime, appointmentActualStartTimeNewValue)) {
+					JSONObject json = new JSONObject();
+					json.put("message", "It's Your Turn. Doctor Is Waiting You");
+					messagingTemplate.convertAndSend("/topic/clinicTurn/" + appointmentModel.getUserFk(),
+							json.toString());
+				}
 			}
-			if (!Objects.equals(appointmentActualEndTime, appointmentActualEndTimeNewValue)) {
-				JSONObject json = new JSONObject();
-				json.put("message", "Be ready for your appointment");
-				messagingTemplate.convertAndSend("/topic/clinicTurn/" + appointmentModel.getUserFk(), json.toString());
+			if (appointmentModel.getAppointmentActualEndTime() != null) {
+				Timestamp appointmentActualEndTime = rs.getTimestamp("appointmentActualEndTime");
+				Timestamp appointmentActualEndTimeNewValue = Timestamp
+						.valueOf(appointmentModel.getAppointmentActualEndTime());
+				if (!Objects.equals(appointmentActualEndTime, appointmentActualEndTimeNewValue)) {
+					JSONObject json = new JSONObject();
+					json.put("message", "Be ready for your appointment");
+					messagingTemplate.convertAndSend("/topic/clinicTurn/" + appointmentModel.getUserFk(),
+							json.toString());
+				}
 			}
 
 			if (!Objects.equals(isCancelled, isCancelledNewValue)) {
@@ -1077,8 +1151,10 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
-		myStmt.setTimestamp(1, Timestamp.valueOf(appointmentModel.getAppointmentActualStartTime()));
-		myStmt.setTimestamp(2, Timestamp.valueOf(appointmentModel.getAppointmentActualEndTime()));
+		myStmt.setTimestamp(1, appointmentModel.getAppointmentActualStartTime() == null ? null
+				: Timestamp.valueOf(appointmentModel.getAppointmentActualStartTime()));
+		myStmt.setTimestamp(2, appointmentModel.getAppointmentActualEndTime() == null ? null
+				: Timestamp.valueOf(appointmentModel.getAppointmentActualEndTime()));
 		myStmt.setString(3, appointmentModel.getAppointmentStatus().toString());
 		myStmt.setBoolean(4, appointmentModel.getIsApproved());
 		myStmt.setBoolean(5, appointmentModel.getIsCancelled());
@@ -1531,15 +1607,48 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				reservationSlot.setReservationId(id);
-				Gson gson = new Gson();
-				String reservationSlotJson = gson.toJson(reservationSlot);
-				JsonObject jsonObject = JsonParser.parseString(reservationSlotJson).getAsJsonObject();
-				JSONObject json = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+				JSONObject jsonSocketResponse = new JSONObject();
+				JSONObject json = new JSONObject();
+
+				json.put("reservationId", id);
+				query = "select * from reserved_slots_chosen_table"
+						+ " rst join business_account_schedule_slots_table basst"
+						+ " on basst.slotId = rst.slotFk join business_account_schedule_table bast"
+						+ " on bast.scheduleId = basst.scheduleFk join business_account_table bat"
+						+ " on bat.businessAccountId = bast.businessAccountFk join users_table ut"
+						+ " on ut.userId = bat.userFk " + "join specialities_table st on "
+						+ "st.specialityId = bat.specialityFk where rst.reservationId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query,
+						Statement.RETURN_GENERATED_KEYS);
+				myStmt.setInt(1, id);
+				ResultSet myRs = myStmt.executeQuery();
+				jsonSocketResponse.put("message", "ADD");
+
+				if (myRs.next()) {
+					json.put("slotFk", myRs.getInt("slotFk"));
+					json.put("userFk", myRs.getInt("userFk"));
+					json.put("businessAccountId", myRs.getInt("businessAccountId"));
+					json.put("slotDate", myRs.getDate("slotDate"));
+					json.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
+					json.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
+					json.put("biography", myRs.getString("biography"));
+					json.put("clinicLocation", myRs.getString("clinicLocation"));
+					json.put("clinicLocationLongitude", myRs.getFloat("clinicLocationLongitude"));
+					json.put("clinicLocationLatitude", myRs.getFloat("clinicLocationLatitude"));
+					json.put("firstName", myRs.getString("firstName"));
+					json.put("lastName", myRs.getString("lastName"));
+					json.put("userEmail", myRs.getString("userEmail"));
+					json.put("profilePicture", myRs.getString("profilePicture"));
+					json.put("specialityName", myRs.getString("specialityName"));
+					json.put("specialityDescription", myRs.getString("specialityDescription"));
+				}
+				jsonSocketResponse.put("reservation", json);
 				jsonResponse.put("message", "Reservation Added successfully");
 				jsonResponse.put("reservation", json);
 				jsonResponse.put("responseCode", 200);
 				myStmt.close();
+				messagingTemplate.convertAndSend("/topic/myReservedSlots/" + reservationSlot.getUserFk(),
+						jsonSocketResponse.toString());
 
 				return ResponseEntity.ok(jsonResponse.toString());
 			}
@@ -1549,9 +1658,9 @@ public class UserController {
 	}
 
 	// passed
-	@DeleteMapping("/deleteReservationSlot/{reservationId}")
-	public ResponseEntity<Object> deleteReservationSlot(@PathVariable("reservationId") int reservationId)
-			throws SQLException, IOException, NoSuchAlgorithmException {
+	@DeleteMapping("/deleteReservationSlotByReservationId/{reservationId}/{userFk}")
+	public ResponseEntity<Object> deleteReservationSlotByReservationId(@PathVariable("reservationId") int reservationId,
+			@PathVariable("userFk") int userFk) throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "delete from reserved_slots_chosen_table where reservationId=?";
 
@@ -1561,6 +1670,61 @@ public class UserController {
 		myStmt.executeUpdate();
 		jsonResponse.put("message", "Reservation Deleted successfully");
 		jsonResponse.put("responseCode", 200);
+		JSONObject jsonSocketResponse = new JSONObject();
+		jsonSocketResponse.put("message", "DELETE");
+		jsonSocketResponse.put("reservationId", reservationId);
+
+		messagingTemplate.convertAndSend("/topic/myReservedSlots/" + userFk, jsonSocketResponse.toString());
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@DeleteMapping("/deleteReservationSlotBySlot/{slotFk}/{userFk}")
+	public ResponseEntity<Object> deleteReservationSlotBySlot(@PathVariable("slotFk") int slotFk,
+			@PathVariable("userFk") int userFk) throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "delete from reserved_slots_chosen_table where userFk=? and slotFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+		myStmt.setInt(2, slotFk);
+
+		myStmt.executeUpdate();
+		jsonResponse.put("message", "Reservation Deleted successfully");
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@GetMapping("/isSlotReservedByUser/{userFk}/{slotFk}")
+	public ResponseEntity<Object> isSlotReservedByUser(@PathVariable("userFk") int userFk,
+			@PathVariable("slotFk") int slotFk) throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select * from reserved_slots_chosen_table where userFk=? and slotFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+		myStmt.setInt(2, slotFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		if (myRs.next()) {
+			jsonResponse.put("message", true);
+
+			jsonResponse.put("responseCode", 200);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+
+		}
+		jsonResponse.put("message", false);
+
+		jsonResponse.put("responseCode", -1);
 		myStmt.close();
 
 		return ResponseEntity.ok(jsonResponse.toString());
@@ -1616,7 +1780,7 @@ public class UserController {
 	public ResponseEntity<Object> getMedicalInformation(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "select * from medical_information where userFk=?";
+		String query = "select COALESCE(height, 0) as height, COALESCE(weight, 0) as weight, COALESCE(diseasesDescription, 0) as diseasesDescription, COALESCE(vaccinationDescription, 0) as vaccinationDescription from medical_information where userFk=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, userFk);
@@ -1923,7 +2087,7 @@ public class UserController {
 				myStmt.setString(1, user.getUserEmail());
 				ResultSet rs = myStmt.executeQuery();
 				if (rs.next()) {
-					boolean isVerified=rs.getBoolean("isVerified");
+					boolean isVerified = rs.getBoolean("isVerified");
 					if (isVerified) {
 						String userRole = rs.getString("userRole");
 						jsonResponse.put("userRole", userRole);
