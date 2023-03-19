@@ -6,6 +6,7 @@ public class PostponeAppointmentModel {
 	int oldSlotFk;
 	int isApproved = 0;
 	int businessAccountFk;
+	int businessAccountUserId;
 	int userFk;
 
 	public int getBusinessAccountFk() {
@@ -24,7 +25,6 @@ public class PostponeAppointmentModel {
 		this.appointmentId = appointmentId;
 	}
 
-	
 	public int getIsApproved() {
 		return isApproved;
 	}
@@ -33,15 +33,23 @@ public class PostponeAppointmentModel {
 		this.isApproved = isApproved;
 	}
 
-	
 	public PostponeAppointmentModel() {
 		super();
 	}
 
 	@Override
 	public String toString() {
-		return "{\"businessAccountFk\":" + businessAccountFk + ",\"appointmentId\":" + appointmentId + ", \"oldSlotFk\":"
-				+ oldSlotFk + "\"newSlotFk\":" + newSlotFk+", \"isApproved\":" + isApproved + ",\"userFk\":"+userFk+"}";
+		return "{\"businessAccountUserId\":" + businessAccountUserId + ",\"businessAccountFk\":" + businessAccountFk
+				+ ",\"appointmentId\":" + appointmentId + ", \"oldSlotFk\":" + oldSlotFk + "\"newSlotFk\":" + newSlotFk
+				+ ", \"isApproved\":" + isApproved + ",\"userFk\":" + userFk + "}";
+	}
+
+	public int getBusinessAccountUserId() {
+		return businessAccountUserId;
+	}
+
+	public void setBusinessAccountUserId(int businessAccountUserId) {
+		this.businessAccountUserId = businessAccountUserId;
 	}
 
 	public PostponeAppointmentModel(int appointmentId, int newSlotFk, int oldSlotFk, int isApproved,

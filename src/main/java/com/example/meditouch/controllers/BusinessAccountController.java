@@ -56,7 +56,6 @@ import models.UserModel;
 @RestController
 public class BusinessAccountController {
 	private SimpMessagingTemplate messagingTemplate;
-	static PreparedStatement myStmt;
 	List<NotificationsModel> notificationModel = new ArrayList<NotificationsModel>();
 
 	public BusinessAccountController(SimpMessagingTemplate messagingTemplate) {
@@ -74,6 +73,8 @@ public class BusinessAccountController {
 	@GetMapping("/getTodayAppointments/{businessAccountFk}")
 	public ResponseEntity<Object> getTodayAppointments(@PathVariable("businessAccountFk") int businessAccountFk)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -131,6 +132,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountFk") int businessAccountFk,
 			@PathVariable("fromDate") Date fromDate, @PathVariable("toDate") Date toDate)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -168,6 +171,8 @@ public class BusinessAccountController {
 	@GetMapping("/getBusinessAccountPatients/{businessAccountId}")
 	public ResponseEntity<Object> getBusinessAccountPatients(@PathVariable("businessAccountId") int businessAccountId)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select DISTINCT apt.userFk as userId, ut.firstName, ut.lastName, ut.userEmail, ut.profilePicture, COALESCE(babt.blockId, -1) as blockId from appointments_table apt join users_table ut on ut.userId=apt.userFk left join business_account_blockings_table babt on babt.userFk = apt.userFk where apt.businessAccountFk="
 				+ businessAccountId;
@@ -202,6 +207,8 @@ public class BusinessAccountController {
 	@GetMapping("/getBusinessAccountStatistics/{businessAccountId}")
 	public ResponseEntity<Object> getBusinessAccountStatistics(@PathVariable("businessAccountId") int businessAccountId)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt where apt.businessAccountFk="
 				+ businessAccountId
@@ -236,6 +243,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getHealthProfessionals(@PathVariable("userFk") int userFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
 			@PathVariable("searchText") String searchText) throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select count(*) as total_count from users_table where userRole='HEALTH_PROFESSIONAL' and isApproved=1 and isVerified=1 and userId!=? ";
 		if (!searchText.equals("null")) {
@@ -292,6 +301,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getReferrals(@PathVariable("userFk") int userFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from business_account_referrals_table where userFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -350,6 +361,8 @@ public class BusinessAccountController {
 	@PostMapping("/addReferrals")
 	public ResponseEntity<Object> addReferrals(@RequestBody AppointmentReferralModel[] appointmentReferralModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "insert into business_account_referrals_table (userFk, appointmentFk,referralDescription, referredByBusinessAccountFk, referredToBusinessAccountFk) values(?,?,?,?,?)";
 
@@ -422,6 +435,8 @@ public class BusinessAccountController {
 	@DeleteMapping("/deleteReferrals")
 	public ResponseEntity<Object> deleteReferrals(@RequestBody AppointmentReferralModel[] appointmentReferralModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "delete from business_account_referrals_table where referralId=?";
 
@@ -446,6 +461,8 @@ public class BusinessAccountController {
 
 	public ResponseEntity<Object> addNotification(@RequestBody List<NotificationsModel> notificationModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "insert into notifications_table (userToFk, userFromFk, notificationText, notificationType, notificationUrl) values (?,?,?,?,?)";
 
@@ -482,6 +499,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getAppointments(@PathVariable("id") int id, @PathVariable("userType") String userType,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
 			@RequestBody AppointmentFilters appointmentFilters) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 
@@ -514,7 +533,7 @@ public class BusinessAccountController {
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
 				"select at.isCancelled, at.businessAccountFk, at.userFk as currentUserId,basset.slotId, basset.slotStartTime,"
 						+ "at.appointmentActualStartTime," + " at.appointmentActualEndTime "
-						+ ",at.appointmentStatus, ut.firstName, ut.lastName, ut.userEmail, "
+						+ ",at.appointmentStatus, ut.firstName, ut.lastName, ut.userEmail, ut.userId as businessAccountUserId,"
 						+ "ut.profilePicture,bast.serviceName,bast.servicePrice, bast.currencyUnit,"
 						+ " at.appointmentId,   COALESCE(apt.prescriptionId, -1) as prescriptionId,"
 						+ "COALESCE(apt.prescriptionDescription, -1) as prescriptionDescription from appointments_table "
@@ -558,6 +577,7 @@ public class BusinessAccountController {
 			json.put("businessAccountFk", myRs2.getInt("businessAccountFk"));
 			json.put("slotId", myRs2.getInt("slotId"));
 			json.put("isCancelled", myRs2.getBoolean("isCancelled"));
+			json.put("businessAccountUserId", myRs2.getInt("businessAccountUserId"));
 
 			json.put("firstName", myRs2.getString("firstName"));
 			json.put("lastName", myRs2.getString("lastName"));
@@ -590,6 +610,8 @@ public class BusinessAccountController {
 	@PostMapping("/addAppointmentResult")
 	public ResponseEntity<Object> addAppointmentResult(@RequestBody AppointmentResultModel appointmentResultModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -652,6 +674,8 @@ public class BusinessAccountController {
 	@GetMapping("/getAppointmentPrescription/{appointmentFk}")
 	public ResponseEntity<Object> getAppointmentPrescription(@PathVariable("appointmentFk") int appointmentFk)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
@@ -683,6 +707,8 @@ public class BusinessAccountController {
 	@GetMapping("/getAppointmentResult/{appointmentFk}")
 	public ResponseEntity<Object> getAppointmentResult(@PathVariable("appointmentFk") int appointmentFk)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -718,6 +744,8 @@ public class BusinessAccountController {
 	@GetMapping("/getRevenueOfYear/{businessaccountFk}/{userFk}")
 	public ResponseEntity<Object> getRevenueOfYear(@PathVariable("businessaccountFk") int businessaccountFk,
 			@PathVariable("userFk") int userFk) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "SELECT DATE_FORMAT(a.slotDate, '%m') AS month, COUNT(*) AS num_appointments, "
 				+ "SUM(s.servicePrice) AS revenue, s.currencyUnit FROM appointments_table AS"
@@ -757,6 +785,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> addAppointmentPrescription(
 			@RequestBody AppointmentPrescriptionModel appointmentPrescriptionModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -823,6 +853,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> updateAppointmentPrescription(
 			@RequestBody AppointmentPrescriptionModel appointmentPrescriptionModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -879,6 +911,8 @@ public class BusinessAccountController {
 	@DeleteMapping("/deleteService")
 	public ResponseEntity<Object> deleteService(@RequestBody ServiceModel[] serviceModel)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
@@ -903,6 +937,8 @@ public class BusinessAccountController {
 	@GetMapping("/getServices/{businessAccountFk}")
 	public ResponseEntity<Object> getServices(@PathVariable("businessAccountFk") int businessAccountFk)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
@@ -934,6 +970,8 @@ public class BusinessAccountController {
 	@PostMapping("/addService")
 	public ResponseEntity<Object> addService(@RequestBody ServiceModel[] serviceModel)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -968,6 +1006,8 @@ public class BusinessAccountController {
 	@PostMapping("/updateNotificationsSettings/{userFk}")
 	public ResponseEntity<Object> updateNotificationsSettings(@PathVariable("userFk") int userFk,
 			@RequestBody NotificationsSettings notificationsSettings) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update notifications_settings set onReferral=?,onFavorite=?,onScheduleReminder=?,onAppointmentReservation=?,onAddFeatureEmail=?,onAppointmentReminder=? where userFk=?";
 
@@ -999,6 +1039,8 @@ public class BusinessAccountController {
 	@GetMapping("/getNotificationsSettings/{userFk}")
 	public ResponseEntity<Object> getNotificationsSettings(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		String query = "select COALESCE(onReferral, 1) as onReferral, COALESCE(onFavorite, 1) as onFavorite, COALESCE(onScheduleReminder, 1) as onScheduleReminder,"
 				+ " COALESCE(onAppointmentReservation, 1) as onAppointmentReservation, COALESCE(onAddFeatureEmail, 1) as onAddFeatureEmail, COALESCE(onAppointmentReminder, 1) as onAppointmentReminder from notifications_settings where userFk=?";
 
@@ -1043,6 +1085,8 @@ public class BusinessAccountController {
 	@PutMapping("/updateService")
 	public ResponseEntity<Object> updateService(@RequestBody ServiceModel[] serviceModel)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -1072,6 +1116,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getBlockedUsers(@PathVariable("businessAccountFk") int businessAccountFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		String query = "select COUNT(*) AS total_count from business_account_blockings_table where businessAccountFk=?";
@@ -1121,6 +1167,8 @@ public class BusinessAccountController {
 	// passed
 	@PostMapping("/blockUser")
 	public ResponseEntity<Object> blockUser(@RequestBody BlockModel blockModel) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
@@ -1156,6 +1204,8 @@ public class BusinessAccountController {
 	@DeleteMapping("/removeBlockUser/{blockId}")
 	public ResponseEntity<Object> removeBlockUser(@PathVariable("blockId") int blockId)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
@@ -1175,6 +1225,8 @@ public class BusinessAccountController {
 	// passed
 	public static void registerBusinessAccount(BusinessAccountModel businessAccountModel)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
 				"insert into business_account_table (userFk, specialityFk, biography, clinicLocation, clinicLocationLongitude, clinicLocationLatitude) values ( ?, ?, ?, ?, ?, ?)",
 				Statement.RETURN_GENERATED_KEYS);
@@ -1194,6 +1246,8 @@ public class BusinessAccountController {
 	@PutMapping("/updateBusinessAccount")
 	public ResponseEntity<Object> updateBusinessAccount(@RequestBody BusinessAccountModel businessAccountModel)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update business_account_table set specialityFk = ? , biography=?, clinicLocation=?, clinicLocationLongitude=?, clinicLocationLatitude=? where businessAccountId=?";
 
@@ -1226,6 +1280,8 @@ public class BusinessAccountController {
 	@GetMapping("/getBusinessAccount/{userFk}")
 	public ResponseEntity<Object> getBusinessAccount(@PathVariable("userFk") int userFk)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		String query = "select businessAccountId,specialityFk,specialityName,specialityDescription,biography,"
@@ -1264,6 +1320,8 @@ public class BusinessAccountController {
 
 	// passed
 	public int getScheduleId(int businessAccountId) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		int scheduleId = -1;
 		String query = "select scheduleId from business_account_schedule_table where businessAccountFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1284,6 +1342,8 @@ public class BusinessAccountController {
 	// passed
 	@PutMapping("/modifySlotLock/{slotId}")
 	public ResponseEntity<Object> modifySlotLock(@PathVariable("slotId") int slotId) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update business_account_schedule_slots_table set isLocked = CASE WHEN isLocked = true THEN false ELSE true END  where slotId=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1301,6 +1361,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getBusinessAccountSchedule(@PathVariable("businessAccountId") int businessAccountId,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt = null;
+
 		String query = "";
 		ResultSet myRs = null;
 		ObjectMapper mapper = new ObjectMapper();
@@ -1367,6 +1429,7 @@ public class BusinessAccountController {
 
 	public boolean isBusinessAccountExist(@PathVariable("businessAccountId") int businessAccountId)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
 
 		String query = "select * from business_account_table where businessAccountId=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1389,6 +1452,8 @@ public class BusinessAccountController {
 	@DeleteMapping("/deleteSchedule/{businessAccountFk}")
 	public ResponseEntity<Object> deleteSchedule(@PathVariable("businessAccountFk") int businessAccountFk)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select scheduleId from business_account_schedule_table where businessAccountFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1416,6 +1481,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> setSchedule(@PathVariable("businessAccountFk") int businessAccountFk,
 			@RequestBody BusinessAccountScheduleSlotModel[] businessAccountScheduleSlotModel)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 		String query = "";
 		try {
@@ -1430,7 +1497,6 @@ public class BusinessAccountController {
 
 			if (scheduleId != -1) {
 				deleteSchedule(scheduleId);
-				myStmt.close();
 
 			}
 			if (scheduleId == -1) {
@@ -1476,7 +1542,38 @@ public class BusinessAccountController {
 
 			jsonResponse.put("message", "Schedule Created Successfully");
 			jsonResponse.put("schedule", businessAccountScheduleSlotModel);
+			jsonResponse.put("businessAccountFk", businessAccountFk);
+
 			jsonResponse.put("responseCode", 200);
+			myStmt = DatabaseConnection.getInstance().getMyCon()
+					.prepareStatement("select * from business_account_schedule_slots_table" + " basst"
+							+ " join business_accounts_services_table "
+							+ " bast on bast.serviceId=basst.serviceFk where scheduleFk=?");
+			myStmt.setInt(1, scheduleId);
+			ResultSet s2 = myStmt.executeQuery();
+			JSONArray jsonArraySocketResponse = new JSONArray();
+			JSONObject jsonSocketResponse = new JSONObject();
+
+			while (s2.next()) {
+				JSONObject jsonSocket = new JSONObject();
+				jsonSocket.put("currencyUnit", s2.getString("currencyUnit"));
+				jsonSocket.put("isLocked", s2.getBoolean("isLocked"));
+				jsonSocket.put("isReserved", s2.getString("isReserved"));
+				jsonSocket.put("serviceId", s2.getInt("serviceId"));
+				jsonSocket.put("serviceName", s2.getString("serviceName"));
+				jsonSocket.put("servicePrice", s2.getInt("servicePrice"));
+				jsonSocket.put("slotDate", s2.getString("slotDate"));
+				jsonSocket.put("slotEndTime", s2.getTimestamp("slotEndTime"));
+				jsonSocket.put("slotId", s2.getInt("slotId"));
+				jsonSocket.put("slotStartTime", s2.getTimestamp("slotStartTime"));
+				jsonArraySocketResponse.put(jsonSocket);
+
+			}
+			jsonSocketResponse.put("schedule", jsonArraySocketResponse);
+
+			jsonSocketResponse.put("businessAccountFk", businessAccountFk);
+
+			messagingTemplate.convertAndSend("/topic/schedules", jsonSocketResponse.toString());
 			return ResponseEntity.ok(jsonResponse.toString());
 		} catch (Exception e) {
 			jsonResponse.put("message", e.getMessage());
@@ -1490,6 +1587,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> globalSearch(@RequestBody GlobalSearchModel globalSearchModel,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
 			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		if (!Double.isNaN(globalSearchModel.getMinDistance())) {
@@ -1540,8 +1639,8 @@ public class BusinessAccountController {
 				+ "  basst.isDeleted, temp.userId,srt.servicePrice,srt.currencyUnit, srt.serviceName,srt.serviceId,basst.slotId,basst.isReserved, basst.slotDate, basst.slotStartTime, basst.slotEndTime, basst.isLocked,temp.biography, temp.clinicLocation,temp.clinicLocationLongitude,temp.clinicLocationLatitude,  temp.businessAccountId,  temp.firstName, temp.lastName, temp.userEmail, temp.profilePicture, st.specialityName, st.specialityDescription    from (select *  from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit "
 				+ recordsByPage + " OFFSET " + ((pageNumber - 1) * recordsByPage) + ") as temp join specialities_table "
 				+ " st on temp.specialityFk = st.specialityId join business_account_schedule_table bast "
-				+ " on bast.businessAccountFk = temp.businessAccountId join business_account_schedule_slots_table basst on basst.scheduleFk = bast.scheduleId "
-				+ " join business_accounts_services_table srt on srt.serviceId = basst.serviceFk ";
+				+ " on bast.businessAccountFk = temp.businessAccountId left join business_account_schedule_slots_table basst on basst.scheduleFk = bast.scheduleId "
+				+ " left join business_accounts_services_table srt on srt.serviceId = basst.serviceFk ";
 		if (globalSearchModel.getUserId() != -1) {
 			query += " left join (select COALESCE(ft.businessAccountFk, -1) as favoriteBusinessAccountFk, COALESCE(ft.favoriteId, -1) as favoriteId from favorites_table ft where ft.userFk="
 					+ globalSearchModel.getUserId()
@@ -1675,6 +1774,8 @@ public class BusinessAccountController {
 	@GetMapping("/getAdminStatistics")
 	public ResponseEntity<Object> getAdminStatistics() throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
+		PreparedStatement myStmt = null;
+
 		String query = "Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt"
 
 				+ ") as p1 JOIN (SELECT COUNT(ut.userId) as total_hps from users_table ut where ut.userRole='HEALTH_PROFESSIONAL'"
@@ -1708,6 +1809,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getAllHealthProfessionals(@PathVariable("searchText") String searchText,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
 			@PathVariable("isApproved") int isApproved) throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
 		JSONObject jsonResponse = new JSONObject();
 
 		String query = "select count(*) as total_count from users_table ut where ut.userRole='HEALTH_PROFESSIONAL'";
