@@ -1294,8 +1294,8 @@ public class UserController {
 				json.put("key", "appointmentStatus");
 
 				json.put("value", appointmentStatusNewValue);
-				String notificationText = "Doctor " + rs.getString("hpFirstName") + " " + rs.getString("hpLastName") + " "
-						+ (appointmentModel.getAppointmentStatus().toString().equals("ACCEPTED") ? "accepted"
+				String notificationText = "Doctor " + rs.getString("hpFirstName") + " " + rs.getString("hpLastName")
+						+ " " + (appointmentModel.getAppointmentStatus().toString().equals("ACCEPTED") ? "accepted"
 								: "rejected")
 						+ " your appointment you reserved on " + rs.getTimestamp("slotStartTime");
 				JSONObject jsonNotificationReturned = new JSONObject();
@@ -1351,7 +1351,8 @@ public class UserController {
 				json2.put("key", "isCancelled");
 
 				json2.put("value", true);
-				String notificationText = "Patient " + rs.getString("patientFirstName") + " " + rs.getString("patientLastName") + " "
+				String notificationText = "Patient " + rs.getString("patientFirstName") + " "
+						+ rs.getString("patientLastName") + " "
 
 						+ "cancelled the appointment reserved on " + rs.getTimestamp("slotStartTime");
 				JSONObject jsonNotificationReturned = new JSONObject();
@@ -1616,15 +1617,36 @@ public class UserController {
 				JSONObject socketJson = new JSONObject();
 				socketJson.put("type", "ADD");
 				socketJson.put("favoriteDoctorInfo", json);
-				query = "select COALESCE(onFavorite,1) from notifications_settings ns join users_table ut on ut.userId=ns.userFk join "
-						+ "business_account_table bat on bat.userFk=ut.userId where bat.businessAccountId=?";
+				query = "select COALESCE(onFavorite,1) as onFavorite, ut2.firstName as patientFirstName, "
+						+ "ut2.lastName patientLastName, ut2.profilePicture patientProfilePicture, ut.userId "
+						+ "as businessAccountUserId from notifications_settings ns cross join users_table ut2 cross join users_table ut on ut.userId=ns.userFk join "
+						+ "business_account_table bat on bat.userFk=ut.userId where bat.businessAccountId=? "
+						+ "and ut2.userId=?";
 				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 				myStmt.setInt(1, favoriteModel.getBusinessAccountFk());
+				myStmt.setInt(2, favoriteModel.getUserFk());
+
 				ResultSet rs = myStmt.executeQuery();
+				messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + favoriteModel.getUserFk(),
+						socketJson.toString());
 				if (rs.next()) {
 					if (rs.getBoolean("onFavorite") == true) {
-						messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + favoriteModel.getUserFk(),
-								socketJson.toString());
+						String notificationText = rs.getString("patientFirstName") + " "
+								+ rs.getString("patientLastName") + " added you to their favorties";
+						JSONObject jsonNotificationReturned = new JSONObject();
+						jsonNotificationReturned.put("userFromFk", favoriteModel.getUserFk());
+						jsonNotificationReturned.put("userToFk", rs.getInt("businessAccountUserId"));
+						jsonNotificationReturned.put("notificationText", notificationText);
+						jsonNotificationReturned.put("notificationType", "FAVORITE");
+						jsonNotificationReturned.put("isOpen", false);
+						jsonNotificationReturned.put("notificationUrl", "");
+						jsonNotificationReturned.put("userFromProfile", rs.getString("patientProfilePicture"));
+						List<NotificationsModel> list = new ArrayList<>();
+						list.add(new NotificationsModel(false, 0, rs.getInt("businessAccountUserId"),
+								favoriteModel.getUserFk(), notificationText, NotificationType.FAVORITE, ""));
+						addNotification(list);
+						messagingTemplate.convertAndSend("/topic/notifications/" + rs.getInt("businessAccountUserId"),
+								jsonNotificationReturned.toString());
 					}
 				}
 				myStmt.close();

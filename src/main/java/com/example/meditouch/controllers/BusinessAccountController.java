@@ -297,8 +297,8 @@ public class BusinessAccountController {
 	}
 
 	// passed
-	@GetMapping("/getReferrals/{userFk}/{pageNumber}/{recordsByPage}")
-	public ResponseEntity<Object> getReferrals(@PathVariable("userFk") int userFk,
+	@GetMapping("/getReferrals/{businessAccountFk}/{pageNumber}/{recordsByPage}")
+	public ResponseEntity<Object> getReferrals(@PathVariable("businessAccountFk") int businessAccountFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		PreparedStatement myStmt = null;
@@ -306,7 +306,7 @@ public class BusinessAccountController {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "select COUNT(*) AS total_count from business_account_referrals_table where userFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, userFk);
+		myStmt.setInt(1, businessAccountFk);
 		ResultSet myRs = myStmt.executeQuery();
 		int totalNumberOfPages = 0;
 
@@ -314,34 +314,37 @@ public class BusinessAccountController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 		myRs.close();
-		query = "select u.firstName as referredByFirstName,u.lastName as referredByLastName,u.userEmail as referredByUserEmail,u.profilePicture as referredByProfilePicture, srt.serviceName, srt.servicePrice,srt.currencyUnit, bart.referralDescription, bat.biography as referredToBiography, bat.clinicLocation as referredToClinicLocation, bat.clinicLocationLongitude as referredToClinicLocationLongitude, bat.clinicLocationLatitude as referredToClinicLocationLatitude, u.firstName as referredToFirstName, u.lastName as referredToLastName, u.userEmail as referredToUserEmail, u.profilePicture as referredToProfilePicture, st.specialityName as referredToSpecialityName from business_account_referrals_table bart join business_account_table bat on bat.businessAccountId = bart.referredToBusinessAccountFk join business_account_table bat2 on bat2.businessAccountId=bart.referredByBusinessAccountFk join users_table ut2 on ut2.userId=bat2.userFk join users_table u on u.userId = bat.userFk join specialities_table st on st.specialityId = bat.specialityFk join appointments_table atb on atb.appointmentId=bart.appointmentFk join business_accounts_services_table srt on srt.serviceId=atb.serviceFk where bart.userFk"
-				+ " =? limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+		query = "select ut2.firstName as patientFirstName,ut2.lastName as patientLastName,"
+				+ "ut2.userEmail as patientUserEmail,ut2.profilePicture as patientProfilePicture,"
+				+ " ut.firstName as referredByFirstName,ut.lastName as referredByLastName,ut.userEmail "
+				+ "as referredByUserEmail, ut.profilePicture as referredByProfilePicture,"
+				+ " bart.referralDescription, bart.referralId, bart.appointmentFk"
+				+ "  from business_account_referrals_table bart join business_account_table"
+				+ " bat on bat.businessAccountId=bart.referredByBusinessAccountFk join "
+				+ "users_table ut on ut.userId=bat.userFk join users_table ut2 on ut2.userId=bart.userFk where bart.referredToBusinessAccountFk=?"
+				+ " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, userFk);
+		myStmt.setInt(1, businessAccountFk);
 
 		ResultSet myRs2 = myStmt.executeQuery();
 		JSONArray jsonArray = new JSONArray();
 		while (myRs2.next()) {
 			JSONObject json = new JSONObject();
-			json.put("referredToBiography", myRs2.getString("referredToBiography"));
-			json.put("referredToClinicLocation", myRs2.getString("referredToClinicLocation"));
-			json.put("referredToClinicLocationLongitude", myRs2.getFloat("referredToClinicLocationLongitude"));
-			json.put("referredToClinicLocationLatitude", myRs2.getFloat("referredToClinicLocationLatitude"));
+
 			json.put("referredByFirstName", myRs2.getString("referredByFirstName"));
 			json.put("referredByLastName", myRs2.getString("referredByLastName"));
 			json.put("referredByUserEmail", myRs2.getString("referredByUserEmail"));
 			json.put("referredByProfilePicture", myRs2.getString("referredByProfilePicture"));
-			json.put("referredToFirstName", myRs2.getString("referredToFirstName"));
-			json.put("referredToLastName", myRs2.getString("referredToLastName"));
-			json.put("referredToUserEmail", myRs2.getString("referredToUserEmail"));
-			json.put("referredToProfilePicture", myRs2.getString("referredToProfilePicture"));
-			json.put("referredToSpecialityName", myRs2.getString("referredToSpecialityName"));
+
+			json.put("patientFirstName", myRs2.getString("patientFirstName"));
+			json.put("patientLastName", myRs2.getString("patientLastName"));
+			json.put("patientUserEmail", myRs2.getString("patientUserEmail"));
+			json.put("patientProfilePicture", myRs2.getString("patientProfilePicture"));
+
 			json.put("referralDescription", myRs2.getString("referralDescription"));
-			json.put("serviceName", myRs2.getString("serviceName"));
-			json.put("servicePrice", myRs2.getInt("servicePrice"));
-			json.put("currencyUnit", myRs2.getString("currencyUnit"));
-			json.put("referralDescription", myRs2.getString("referralDescription"));
+			json.put("referralId", myRs2.getInt("referralId"));
+			json.put("appointmentFk", myRs2.getInt("appointmentFk"));
 
 			jsonArray.put(json);
 
@@ -383,7 +386,7 @@ public class BusinessAccountController {
 		int i = 0;
 		while (slotsGeneratedKeys.next()) {
 			appointmentReferralModel[i].setReferralId(slotsGeneratedKeys.getInt(1));
-			query = "select COALESCE(onReferral,1), t2.firstName as patientFirstName, t2.lastName as patientLastName,"
+			query = "select t1.userId as businessAccountReferredByUserId, t3.userId as businessAccountReferredToUserId, COALESCE(onReferral,1), t2.firstName as patientFirstName, t2.lastName as patientLastName,"
 					+ "t2.userEmail as patientUserEmail, t2.profilePicture as patientProfilePicture,"
 					+ "t1.firstName as referredByFirstName, t1.lastName as referredByLastName, "
 					+ "t1.userEmail as referredByUserEmail, t1.profilePicture as referredByProfilePicture  "
@@ -402,18 +405,40 @@ public class BusinessAccountController {
 
 				JSONObject json = new JSONObject();
 				json.put("referralId", appointmentReferralModel[i].getReferralId());
-				json.put("patientFirstName", rs.getString("patientFirstName"));
-				json.put("patientLastName", rs.getString("patientLastName"));
-				json.put("patientUserEmail", rs.getString("patientUserEmail"));
-				json.put("patientProfilePicture", rs.getString("patientProfilePicture"));
+				json.put("referralDescription", appointmentReferralModel[i].getReferralDescription());
+				json.put("appointmentFk", appointmentReferralModel[i].getAppointmentFk());
+
 				json.put("referredByFirstName", rs.getString("referredByFirstName"));
 				json.put("referredByLastName", rs.getString("referredByLastName"));
 				json.put("referredByUserEmail", rs.getString("referredByUserEmail"));
 				json.put("referredByProfilePicture", rs.getString("referredByProfilePicture"));
+				json.put("patientFirstName", rs.getString("patientFirstName"));
+				json.put("patientLastName", rs.getString("patientLastName"));
+				json.put("patientUserEmail", rs.getString("patientUserEmail"));
+				json.put("patientProfilePicture", rs.getString("patientProfilePicture"));
+				messagingTemplate.convertAndSend(
+						"/topic/referral/" + appointmentReferralModel[i].getReferredToBusinessAccountFk(),
+						json.toString());
 				if (rs.getBoolean("onReferral") == true) {
+					String notificationText = "Dr " + rs.getString("referredByFirstName") + " "
+							+ rs.getString("referredByLastName") + "  referred you to "
+							+ rs.getString("patientFirstName") + " " + rs.getString("patientLastName");
+					JSONObject jsonNotificationReturned = new JSONObject();
+					jsonNotificationReturned.put("userFromFk", rs.getInt("businessAccountReferredByUserId"));
+					jsonNotificationReturned.put("userToFk", rs.getInt("businessAccountReferredToUserId"));
+					jsonNotificationReturned.put("notificationText", notificationText);
+					jsonNotificationReturned.put("notificationType", "REFERRAL");
+					jsonNotificationReturned.put("isOpen", false);
+					jsonNotificationReturned.put("notificationUrl", "");
+					jsonNotificationReturned.put("userFromProfile", rs.getString("patientProfilePicture"));
+					List<NotificationsModel> list = new ArrayList<>();
+					list.add(new NotificationsModel(false, 0, rs.getInt("businessAccountReferredToUserId"),
+							rs.getInt("businessAccountReferredByUserId"), notificationText, NotificationType.REFERRAL,
+							""));
+					addNotification(list);
 					messagingTemplate.convertAndSend(
-							"/topic/referral/" + appointmentReferralModel[i].getReferredToBusinessAccountFk(),
-							json.toString());
+							"/topic/notifications/" + rs.getInt("businessAccountReferredToUserId"),
+							jsonNotificationReturned.toString());
 				}
 
 				i++;
@@ -697,6 +722,55 @@ public class BusinessAccountController {
 
 		jsonResponse.put("message", "Prescription Returned");
 		jsonResponse.put("result", json);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@GetMapping("/getAppointmentById/{appointmentFk}")
+	public ResponseEntity<Object> getAppointmentById(@PathVariable("appointmentFk") int appointmentFk)
+			throws SQLException, IOException {
+		PreparedStatement myStmt = null;
+
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon()
+				.prepareStatement("select basst.slotStartTime ,atp.appointmentDescription, "
+						+ "ut2.firstName as patientFirstName, ut2.lastName as patientLastName,"
+						+ " ut2.userEmail as patientUserEmail, ut2.profilePicture as" + " patientProfilePicture,"
+						+ " ut1.firstName as doctorFirstName, ut1.lastName as doctorLastName,"
+						+ " ut1.userEmail as doctorUserEmail, ut1.profilePicture as doctorProfilePicture"
+						+ "  from appointments_table atp join " + "business_account_schedule_slots_table basst "
+						+ "on basst.slotId=atp.slotFk join business_account_table bat on "
+						+ "bat.businessAccountId=atp.businessAccountFk join users_table ut1"
+						+ " on ut1.userId=bat.userFk join users_table ut2 on ut2.userId=atp.userFk "
+						+ "where atp.appointmentId=?");
+		myStmt.setInt(1, appointmentFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONObject json = new JSONObject();
+
+		if (myRs.next()) {
+
+			json.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
+			json.put("appointmentDescription", myRs.getString("appointmentDescription"));
+			json.put("patientFirstName", myRs.getString("patientFirstName"));
+			json.put("patientLastName", myRs.getString("patientLastName"));
+			json.put("patientUserEmail", myRs.getString("patientUserEmail"));
+			json.put("patientProfilePicture", myRs.getString("patientProfilePicture"));
+			json.put("doctorFirstName", myRs.getString("doctorFirstName"));
+			json.put("doctorLastName", myRs.getString("doctorLastName"));
+			json.put("doctorUserEmail", myRs.getString("doctorUserEmail"));
+			json.put("doctorProfilePicture", myRs.getString("doctorProfilePicture"));
+
+		}
+		myRs.close();
+		myStmt.close();
+
+		jsonResponse.put("message", "Appointment Returned");
+		jsonResponse.put("appointment", json);
 
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
@@ -1649,24 +1723,38 @@ public class BusinessAccountController {
 		boolean appendWhere = true;
 		if (globalSearchModel.getSpecialityFk() != -1) {
 			query += " where st.specialityId=" + globalSearchModel.getSpecialityFk();
+			appendWhere=false;
 		}
 
 		if (globalSearchModel.getMinPrice() != -1 && globalSearchModel.getMaxPrice() != -1
 				&& !Double.isNaN(globalSearchModel.getMinPrice()) && !Double.isNaN(globalSearchModel.getMaxPrice())) {
 
-			query += (appendWhere ? "and " : " where ") + "srt.servicePrice >=  " + globalSearchModel.getMinPrice()
+			query += (!appendWhere ? "and " : " where ") + "srt.servicePrice >=  " + globalSearchModel.getMinPrice()
 					+ " and srt.servicePrice <= " + globalSearchModel.getMaxPrice();
+			appendWhere=false;
+
 
 		}
 		if (globalSearchModel.getMinAvailability() != null && globalSearchModel.getMaxAvailability() != null) {
-			query += (appendWhere ? "and " : " where ") + " basst.slotStartTime >=  '"
+			query += (!appendWhere ? "and " : " where ") + " basst.slotStartTime >=  '"
 					+ globalSearchModel.getMinAvailability() + "' and basst.slotEndTime <= '"
 					+ globalSearchModel.getMaxAvailability() + "'";
+			appendWhere=false;
+
 
 		}
 		query += ") as total";
+		if (!globalSearchModel.getSearchText().equals("null")) {
+			query += (!appendWhere ? " and " : " where ") + " firstName LIKE '%" + globalSearchModel.getSearchText()
+					+ "%' or lastName LIKE '%" + globalSearchModel.getSearchText() + "%' or clinicLocation LIKE '%"
+					+ globalSearchModel.getSearchText() + "%' ";
+			appendWhere=false;
+
+		}
 		if (globalSearchModel.getIsFavorite() != -2 && globalSearchModel.getUserId() != -1) {
-			query += " where total.favoriteId " + (globalSearchModel.getIsFavorite() == -1 ? " = -1 " : " != -1");
+			query += (!appendWhere ? " and " : " where ") + " total.favoriteId " + (globalSearchModel.getIsFavorite() == -1 ? " = -1 " : " != -1");
+			appendWhere=false;
+
 		}
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
