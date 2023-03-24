@@ -44,12 +44,12 @@ public class AppointmentsReminder {
 								"Reminder for your appointment with doctor " + rs.getString("firstName") + " "
 										+ rs.getString("lastName") + " on " + rs.getTimestamp("slotStartTime") + " in"
 										+ rs.getString("clinicLocation"));
-						jsonReturned.put("notificationType", "APPOINTMENT");
+						jsonReturned.put("notificationType", "APPOINTMENT_REMINDER");
 						jsonReturned.put("isOpen", false);
 						jsonReturned.put("notificationUrl", "");
 						jsonReturned.put("userFromProfile", rs.getString("profilePicture"));
 
-						messagingTemplate.convertAndSend("/topic/appointmentsReminder/" + rs.getInt("userToFk"),
+						messagingTemplate.convertAndSend("/topic/notifications/" + rs.getInt("userToFk"),
 								jsonReturned.toString());
 					}
 				}

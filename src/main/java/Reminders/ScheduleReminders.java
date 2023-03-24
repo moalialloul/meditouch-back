@@ -67,7 +67,7 @@ public class ScheduleReminders {
 						jsonReturned.put("notificationUrl", "");
 						jsonReturned.put("userFromProfile", "");
 
-						messagingTemplate.convertAndSend("/topic/scheduleReminder/" + rs.getInt("userFk"),
+						messagingTemplate.convertAndSend("/topic/notifications/" + rs.getInt("userFk"),
 								jsonReturned.toString());
 					}
 				}
