@@ -1,36 +1,37 @@
 package models;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 public class GlobalSearchModel {
 	int specialityFk = -1;
 	double minDistance = -1;
 	double maxDistance = -1;
-
+	int userId = -1;
 	double minPrice = -1;
 	double maxPrice = -1;
-
+	int isFavorite = -2;
 	double myLongitude = -1;
 	double myLatitude = -1;
-	Timestamp minAvailability;
-	Timestamp maxAvailability;
+	LocalDateTime minAvailability;
+	LocalDateTime maxAvailability;
 
-	public Timestamp getMaxAvailability() {
+	public LocalDateTime getMaxAvailability() {
 		return maxAvailability;
 	}
 
-	public void setMaxAvailability(Timestamp maxAvailability) {
+	public void setMaxAvailability(LocalDateTime maxAvailability) {
 		this.maxAvailability = maxAvailability;
 	}
 
-	Timestamp minDateTime;
-	Timestamp maxDateTime;
+	LocalDateTime minDateTime;
+	LocalDateTime maxDateTime;
 
-	public Timestamp getMaxDateTime() {
+	public LocalDateTime getMaxDateTime() {
 		return maxDateTime;
 	}
 
-	public void setMaxDateTime(Timestamp maxDateTime) {
+	public void setMaxDateTime(LocalDateTime maxDateTime) {
 		this.maxDateTime = maxDateTime;
 	}
 
@@ -75,8 +76,8 @@ public class GlobalSearchModel {
 	}
 
 	public GlobalSearchModel(int specialityFk, double minDistance, double maxDistance, double minPrice, double maxPrice,
-			double myLatitude, double myLongitude, Timestamp minDateTime, Timestamp maxDateTime,
-			Timestamp minAvailability, Timestamp maxAvailability) {
+			double myLatitude, double myLongitude, LocalDateTime minDateTime, LocalDateTime maxDateTime,
+			LocalDateTime minAvailability, LocalDateTime maxAvailability, int userId, int isFavorite) {
 		super();
 		this.specialityFk = specialityFk;
 		this.minDistance = minDistance;
@@ -90,7 +91,16 @@ public class GlobalSearchModel {
 		this.maxDateTime = maxDateTime;
 		this.minAvailability = minAvailability;
 		this.maxAvailability = maxAvailability;
+		this.userId = userId;
+		this.isFavorite = isFavorite;
+	}
 
+	public int getUserId() {
+		return userId;
+	}
+
+	public void setUserId(int userId) {
+		this.userId = userId;
 	}
 
 	public GlobalSearchModel() {
@@ -103,14 +113,22 @@ public class GlobalSearchModel {
 				+ maxDistance + ", \"minPrice\":" + minPrice + ", \"maxPrice\":" + maxPrice + ", \"myLatitude\" : "
 				+ myLatitude + ", \"myLongitude\":" + myLongitude + ", \"minDateTime\":" + minDateTime
 				+ ",\"maxDateTime\":" + maxDateTime + ",\"minAvailability\":" + minAvailability
-				+ ",\"maxAvailability\":" + maxAvailability + "}";
+				+ ",\"maxAvailability\":" + maxAvailability + ",\"userId\":"+userId+",\"isFavorite\":"+isFavorite+"}";
 	}
 
-	public Timestamp getMinAvailability() {
+	public int getIsFavorite() {
+		return isFavorite;
+	}
+
+	public void setIsFavorite(int isFavorite) {
+		this.isFavorite = isFavorite;
+	}
+
+	public LocalDateTime getMinAvailability() {
 		return minAvailability;
 	}
 
-	public void setMinAvailability(Timestamp minAvailability) {
+	public void setMinAvailability(LocalDateTime minAvailability) {
 		this.minAvailability = minAvailability;
 	}
 

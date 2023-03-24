@@ -49,6 +49,7 @@ import models.BusinessAccountModel;
 import models.BusinessAccountScheduleSlotModel;
 import models.GlobalSearchModel;
 import models.NotificationsModel;
+import models.NotificationsSettings;
 import models.ServiceModel;
 import models.UserModel;
 
@@ -76,7 +77,7 @@ public class BusinessAccountController {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"select atb.appointmentId,basst.slotStartTime, basst.slotEndTime, atb.appointmentActualStartTime, atb.appointmentActualEndTime, atb.appointmentStatus,atb.isApproved, atb.isCancelled, atb.userFk, ut.firstName, ut.lastName, ut.userEmail , ut.profilePicture from appointments_table atb join business_account_schedule_slots_table basst on basst.slotId = atb.slotFk join users_table ut on ut.userId=atb.userFk where atb.appointmentStatus = 'ACCEPTED' and Date(basst.slotDate)=CURDATE() and atb.businessAccountFk=? order by timestamp(basst.slotStartTime) ASC");
+				"select  COALESCE(art.prescriptionId, -1) as prescriptionId,COALESCE(art.prescriptionDescription, -1) as prescriptionDescription, atb.appointmentId,basst.slotStartTime, basst.slotEndTime, atb.appointmentActualStartTime, atb.appointmentActualEndTime, atb.appointmentStatus,atb.isApproved, atb.isCancelled, atb.userFk, ut.firstName, ut.lastName, ut.userEmail , ut.profilePicture from appointments_table atb join business_account_schedule_slots_table basst on basst.slotId = atb.slotFk left join appointment_prescriptions_table art on art.appointmentFk=atb.appointmentId join users_table ut on ut.userId=atb.userFk where atb.appointmentStatus = 'ACCEPTED' and Date(basst.slotDate)=CURDATE() and atb.businessAccountFk=? order by timestamp(basst.slotStartTime) ASC");
 
 		myStmt.setInt(1, businessAccountFk);
 
@@ -101,6 +102,8 @@ public class BusinessAccountController {
 					myRs.getTimestamp("appointmentActualEndTime") != null
 							? myRs.getTimestamp("appointmentActualEndTime")
 							: -1);
+			json.put("prescriptionId", myRs.getInt("prescriptionId"));
+			json.put("prescriptionDescription", myRs.getString("prescriptionDescription"));
 
 			json.put("firstName", myRs.getString("firstName"));
 			json.put("lastName", myRs.getString("lastName"));
@@ -218,6 +221,59 @@ public class BusinessAccountController {
 	}
 
 	// passed
+	@GetMapping("/getHealthProfessionals/{userFk}/{pageNumber}/{recordsByPage}/{searchText}")
+	public ResponseEntity<Object> getHealthProfessionals(@PathVariable("userFk") int userFk,
+			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
+			@PathVariable("searchText") String searchText) throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select count(*) as total_count from users_table where userRole='HEALTH_PROFESSIONAL' and isApproved=1 and isVerified=1 and userId!=? ";
+		if (!searchText.equals("null")) {
+			query += " and (firstName LIKE  '%" + searchText + "%' or lastName LIKE '%" + searchText
+					+ "%' or userEmail LIKE '%" + searchText + "%')";
+		}
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+		ResultSet myRs = myStmt.executeQuery();
+		int totalNumberOfPages = 0;
+
+		if (myRs.next()) {
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
+		}
+		query = "select * from users_table ut join business_account_table bat on bat.userFk=ut.userId where userRole='HEALTH_PROFESSIONAL' and isApproved=1 and isVerified=1 and userId!=?";
+		if (!searchText.equals("null")) {
+			query += " and (firstName LIKE  '%" + searchText + "%' or lastName LIKE '%" + searchText
+					+ "%' or userEmail LIKE '%" + searchText + "%')";
+		}
+		query += " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+
+		myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("userId", myRs.getInt("userId"));
+			json.put("firstName", myRs.getString("firstName"));
+			json.put("businessAccountId", myRs.getInt("businessAccountId"));
+
+			json.put("lastName", myRs.getString("lastName"));
+			json.put("userEmail", myRs.getString("userEmail"));
+			json.put("profilePicture", myRs.getString("profilePicture"));
+
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "All Health Professionals");
+		jsonResponse.put("health_professionals", jsonArray);
+		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@GetMapping("/getReferrals/{userFk}/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getReferrals(@PathVariable("userFk") int userFk,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
@@ -298,14 +354,41 @@ public class BusinessAccountController {
 		int i = 0;
 		while (slotsGeneratedKeys.next()) {
 			appointmentReferralModel[i].setReferralId(slotsGeneratedKeys.getInt(1));
+			query = "select COALESCE(onReferral,1), t2.firstName as patientFirstName, t2.lastName as patientLastName,"
+					+ "t2.userEmail as patientUserEmail, t2.profilePicture as patientProfilePicture,"
+					+ "t1.firstName as referredByFirstName, t1.lastName as referredByLastName, "
+					+ "t1.userEmail as referredByUserEmail, t1.profilePicture as referredByProfilePicture  "
+					+ "from (select * from users_table ut join business_account_table bat on "
+					+ "ut.userId=bat.userFk where bat.businessAccountId=?) as t1"
+					+ " join (select * from users_table ut2 where ut2.userId=?) as t2 join (select ns.onReferral from business_account_table bat join notifications_settings ns on ns.userFk = bat.userFk"
+					+ " where bat.businessAccountId=?) as t3   ";
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+			myStmt.setInt(1, appointmentReferralModel[i].getReferredByBusinessAccountFk());
 
-			JSONObject json = new JSONObject();
-			json.put("type", "ADD");
-			json.put("referral", appointmentReferralModel[i]);
+			myStmt.setInt(2, appointmentReferralModel[i].getUserFk());
+			myStmt.setInt(3, appointmentReferralModel[i].getReferredToBusinessAccountFk());
 
-			messagingTemplate.convertAndSend(
-					"/topic/referral/" + appointmentReferralModel[i].getReferredToBusinessAccountFk(), json.toString());
-			i++;
+			ResultSet rs = myStmt.executeQuery();
+			if (rs.next()) {
+
+				JSONObject json = new JSONObject();
+				json.put("referralId", appointmentReferralModel[i].getReferralId());
+				json.put("patientFirstName", rs.getString("patientFirstName"));
+				json.put("patientLastName", rs.getString("patientLastName"));
+				json.put("patientUserEmail", rs.getString("patientUserEmail"));
+				json.put("patientProfilePicture", rs.getString("patientProfilePicture"));
+				json.put("referredByFirstName", rs.getString("referredByFirstName"));
+				json.put("referredByLastName", rs.getString("referredByLastName"));
+				json.put("referredByUserEmail", rs.getString("referredByUserEmail"));
+				json.put("referredByProfilePicture", rs.getString("referredByProfilePicture"));
+				if (rs.getBoolean("onReferral") == true) {
+					messagingTemplate.convertAndSend(
+							"/topic/referral/" + appointmentReferralModel[i].getReferredToBusinessAccountFk(),
+							json.toString());
+				}
+
+				i++;
+			}
 		}
 		myStmt.close();
 
@@ -407,7 +490,17 @@ public class BusinessAccountController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
-				"select * from appointments_table at join business_accounts_services_table bast on bast.serviceId=at.serviceFk join business_account_schedule_slots_table basset on basset.slotId = at.slotFk join business_account_table bat on bat.businessAccountId=at.businessAccountFk join users_table ut on ut.userId="
+				"select at.businessAccountFk, at.userFk as currentUserId,basset.slotId, basset.slotStartTime,"
+						+ "at.appointmentActualStartTime," + " at.appointmentActualEndTime "
+						+ ",at.appointmentStatus, ut.firstName, ut.lastName, ut.userEmail, "
+						+ "ut.profilePicture,bast.serviceName,bast.servicePrice, bast.currencyUnit,"
+						+ " at.appointmentId,   COALESCE(apt.prescriptionId, -1) as prescriptionId,"
+						+ "COALESCE(apt.prescriptionDescription, -1) as prescriptionDescription from appointments_table "
+						+ "at left join appointment_prescriptions_table apt on apt.appointmentFk=at.appointmentId  "
+						+ "join business_accounts_services_table bast on bast.serviceId=at.serviceFk"
+						+ " join business_account_schedule_slots_table basset on basset.slotId = at.slotFk "
+						+ "join business_account_table bat on bat.businessAccountId=at.businessAccountFk "
+						+ "join users_table ut on ut.userId="
 						+ (userType.equals("PATIENT") ? "bat.userFk" : "at.userFk") + " where "
 						+ (userType.equals("PATIENT") ? "at.userFk =?" : "at.businessAccountFk =?") + " "
 						+ (appointmentFilters.getAppointmentType().equals("ALL") ? ""
@@ -439,11 +532,17 @@ public class BusinessAccountController {
 			json.put("appointmentActualStartTime", myRs.getTimestamp("appointmentActualStartTime"));
 			json.put("appointmentActualEndTime", myRs.getTimestamp("appointmentActualEndTime"));
 			json.put("appointmentStatus", myRs.getString("appointmentStatus"));
+			json.put("currentUserId", myRs.getInt("currentUserId"));
+			json.put("businessAccountFk", myRs.getInt("businessAccountFk"));
+			json.put("slotId", myRs.getInt("slotId"));
+
 			json.put("firstName", myRs.getString("firstName"));
 			json.put("lastName", myRs.getString("lastName"));
 			json.put("userEmail", myRs.getString("userEmail"));
 			json.put("profilePicture", myRs.getString("profilePicture"));
 			json.put("serviceName", myRs.getString("serviceName"));
+			json.put("prescriptionDescription", myRs.getString("prescriptionDescription"));
+			json.put("prescriptionId", myRs.getInt("prescriptionId"));
 
 			json.put("servicePrice", myRs.getDouble("servicePrice"));
 			json.put("currencyUnit", myRs.getString("currencyUnit"));
@@ -452,6 +551,7 @@ public class BusinessAccountController {
 			jsonArray.put(json);
 
 		}
+		myStmt.close();
 		jsonResponse.put("message", "Appointments Returned");
 		jsonResponse.put("appointments", jsonArray);
 		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
@@ -610,7 +710,7 @@ public class BusinessAccountController {
 				"select *, bat.userFk as userFromFk from appointments_table ap join business_account_schedule_slots_table basst on basst.slotId=ap.slotFk join business_account_table bat on bat.businessAccountId = ap.businessAccountFk join users_table ut on ut.userId=bat.userFk where ap.appointmentId=?");
 		myStmt.setInt(1, appointmentPrescriptionModel.getAppointmentFk());
 		ResultSet myRs = myStmt.executeQuery();
-		while (myRs.next()) {
+		if (myRs.next()) {
 			JSONObject json = new JSONObject();
 			String firstName = myRs.getString("firstName");
 			String lastName = myRs.getString("lastName");
@@ -629,36 +729,127 @@ public class BusinessAccountController {
 			notificationModel.add(notification);
 			addNotification(notificationModel);
 			notificationModel.clear();
-			messagingTemplate.convertAndSend("/topic/appointmentPrescription/" + userFk, json.toString());
+			myStmt.close();
 
+			messagingTemplate.convertAndSend("/topic/appointmentPrescription/" + userFk, json.toString());
+			JSONObject jsonReturned = new JSONObject();
+			jsonReturned.put("prescriptionId", prescriptionId);
+			jsonReturned.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
+			jsonReturned.put("prescriptionDescription", appointmentPrescriptionModel.getPrescriptionDescription());
+
+			jsonResponse.put("message", "Appointment Prescription Result Successfully");
+			jsonResponse.put("result", jsonReturned);
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
 		}
 
-		myStmt.close();
-		Gson gson = new Gson();
-		String appointmentPrescriptionModelJson = gson.toJson(appointmentPrescriptionModel);
-		JsonObject jsonObject = JsonParser.parseString(appointmentPrescriptionModelJson).getAsJsonObject();
-		JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream()
-				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-		jsonResponse.put("message", "Appointment Prescription Result Successfully");
-		jsonResponse.put("result", jsonReturned);
+		return null;
+
+	}
+
+	@PutMapping("/updateAppointmentPrescription")
+	public ResponseEntity<Object> updateAppointmentPrescription(
+			@RequestBody AppointmentPrescriptionModel appointmentPrescriptionModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"update appointment_prescriptions_table set prescriptionDescription=? where appointmentFk=?");
+		myStmt.setString(1, appointmentPrescriptionModel.getPrescriptionDescription());
+		myStmt.setInt(2, appointmentPrescriptionModel.getAppointmentFk());
+
+		myStmt.executeUpdate();
+
+		// send notification to the user
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"select *, bat.userFk as userFromFk from appointments_table ap join business_account_schedule_slots_table basst on basst.slotId=ap.slotFk join business_account_table bat on bat.businessAccountId = ap.businessAccountFk join users_table ut on ut.userId=bat.userFk where ap.appointmentId=?");
+		myStmt.setInt(1, appointmentPrescriptionModel.getAppointmentFk());
+		ResultSet myRs = myStmt.executeQuery();
+		if (myRs.next()) {
+			JSONObject json = new JSONObject();
+			String firstName = myRs.getString("firstName");
+			String lastName = myRs.getString("lastName");
+			Date slotDate = myRs.getDate("slotDate");
+			int userFromFk = myRs.getInt("userFromFk");
+
+			int userFk = myRs.getInt("userFk");
+			String message = "Doctor " + firstName + " " + lastName + " added prescription for your appointment on "
+					+ slotDate + " . Check it out";
+			json.put("message", message);
+			json.put("prescriptionId", appointmentPrescriptionModel.getPrescriptionId());
+			json.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
+
+			NotificationsModel notification = new NotificationsModel(false, -1, userFk, userFromFk, message,
+					NotificationType.RESERVED_APPOINTMENT,
+					"/appointment_prescription/" + appointmentPrescriptionModel.getPrescriptionId());
+			notificationModel.add(notification);
+			addNotification(notificationModel);
+			notificationModel.clear();
+			myStmt.close();
+
+			messagingTemplate.convertAndSend("/topic/appointmentPrescription/" + userFk, json.toString());
+			JSONObject jsonReturned = new JSONObject();
+			jsonReturned.put("prescriptionId", appointmentPrescriptionModel.getPrescriptionId());
+			jsonReturned.put("appointmentFk", appointmentPrescriptionModel.getAppointmentFk());
+			jsonReturned.put("prescriptionDescription", appointmentPrescriptionModel.getPrescriptionDescription());
+
+			jsonResponse.put("message", "Appointment Prescription Updated Successfully");
+			jsonResponse.put("result", jsonReturned);
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+
+		return null;
+
+	}
+
+	// passed
+	@DeleteMapping("/deleteService")
+	public ResponseEntity<Object> deleteService(@RequestBody ServiceModel[] serviceModel)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon()
+				.prepareStatement("delete from business_accounts_services_table where serviceId=?");
+		for (int i = 0; i < serviceModel.length; i++) {
+			myStmt.setInt(1, serviceModel[i].getServiceId());
+
+
+			myStmt.addBatch();
+		}
+		myStmt.executeBatch();
+
+		myStmt.executeUpdate();
+		jsonResponse.put("message", "Service Deleted successfully");
+
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 
 	// passed
-	@DeleteMapping("/deleteService/{serviceId}")
-	public ResponseEntity<Object> deleteService(@PathVariable("serviceId") int serviceId)
+	@GetMapping("/getServices/{businessAccountFk}")
+	public ResponseEntity<Object> getServices(@PathVariable("businessAccountFk") int businessAccountFk)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
-				.prepareStatement("delete from business_accounts_services_table where serviceId=?");
+				.prepareStatement("select * from business_accounts_services_table where businessAccountFk=?");
 
-		myStmt.setInt(1, serviceId);
+		myStmt.setInt(1, businessAccountFk);
 
-		myStmt.executeUpdate();
-		jsonResponse.put("message", "Service Deleted successfully");
+		ResultSet rs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (rs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("serviceName", rs.getString("serviceName"));
+			json.put("servicePrice", rs.getString("servicePrice"));
+			json.put("currencyUnit", rs.getString("currencyUnit"));
+			json.put("serviceId", rs.getInt("serviceId"));
+			jsonArray.put(json);
+		}
+		jsonResponse.put("message", "Service");
+		jsonResponse.put("services", jsonArray);
 
 		jsonResponse.put("responseCode", 200);
 		return ResponseEntity.ok(jsonResponse.toString());
@@ -695,6 +886,78 @@ public class BusinessAccountController {
 		jsonResponse.put("message", "Service Created Successfully");
 		jsonResponse.put("services", serviceModel);
 		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@PostMapping("/updateNotificationsSettings/{userFk}")
+	public ResponseEntity<Object> updateNotificationsSettings(@PathVariable("userFk") int userFk,
+			@RequestBody NotificationsSettings notificationsSettings) throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update notifications_settings set onReferral=?,onFavorite=?,onScheduleReminder=?,onAppointmentReservation=?,onAddFeatureEmail=?,onAppointmentReminder=? where userFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt.setBoolean(1, notificationsSettings.getOnReferral());
+		myStmt.setBoolean(2, notificationsSettings.getOnFavorite());
+		myStmt.setBoolean(3, notificationsSettings.getOnScheduleReminder());
+		myStmt.setBoolean(4, notificationsSettings.getOnAppointmentReservation());
+		myStmt.setBoolean(5, notificationsSettings.getOnAddFeatureEmail());
+
+		myStmt.setBoolean(6, notificationsSettings.getOnAppointmentReminder());
+
+		myStmt.setInt(7, userFk);
+
+		myStmt.executeUpdate();
+		ResultSet slotsGeneratedKeys = myStmt.getGeneratedKeys();
+		while (slotsGeneratedKeys.next()) {
+			notificationsSettings.setNotificationSettingsId(slotsGeneratedKeys.getInt(1));
+		}
+		myStmt.close();
+
+		jsonResponse.put("notificationsSettings", notificationsSettings);
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	@GetMapping("/getNotificationsSettings/{userFk}")
+	public ResponseEntity<Object> getNotificationsSettings(@PathVariable("userFk") int userFk)
+			throws SQLException, IOException {
+		String query = "select COALESCE(onReferral, 1) as onReferral, COALESCE(onFavorite, 1) as onFavorite, COALESCE(onScheduleReminder, 1) as onScheduleReminder,"
+				+ " COALESCE(onAppointmentReservation, 1) as onAppointmentReservation, COALESCE(onAddFeatureEmail, 1) as onAddFeatureEmail, COALESCE(onAppointmentReminder, 1) as onAppointmentReminder from notifications_settings where userFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+
+		ResultSet rs = myStmt.executeQuery();
+		JSONObject jsonResponse = new JSONObject();
+		JSONObject json = new JSONObject();
+
+		if (rs.next()) {
+			json.put("onReferral", rs.getBoolean("onReferral"));
+			json.put("onFavorite", rs.getBoolean("onFavorite"));
+			json.put("onScheduleReminder", rs.getBoolean("onScheduleReminder"));
+			json.put("onAppointmentReservation", rs.getBoolean("onAppointmentReservation"));
+			json.put("onAddFeatureEmail", rs.getBoolean("onAddFeatureEmail"));
+			json.put("onAppointmentReminder", rs.getBoolean("onAppointmentReminder"));
+
+		} else {
+			query = "insert into notifications_settings (onReferral,onFavorite, onScheduleReminder, onAppointmentReservation,onAddFeatureEmail,onAppointmentReminder, userFk) values (1,1,1,1,1,1,?)";
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+			myStmt.setInt(1, userFk);
+
+			myStmt.executeUpdate();
+			json.put("onReferral", 1);
+			json.put("onFavorite", 1);
+			json.put("onScheduleReminder", 1);
+			json.put("onAppointmentReservation", 1);
+			json.put("onAddFeatureEmail", 1);
+			json.put("onAppointmentReminder", 1);
+		}
+		jsonResponse.put("notificationsSettings", json);
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
@@ -766,8 +1029,8 @@ public class BusinessAccountController {
 			jsonArray.put(json);
 
 		}
-		jsonResponse.put("message", "All Favorites");
-		jsonResponse.put("favorites", jsonArray);
+		jsonResponse.put("message", "All Blocked");
+		jsonResponse.put("blocked", jsonArray);
 		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
 
 		jsonResponse.put("responseCode", 200);
@@ -849,7 +1112,7 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> updateBusinessAccount(@RequestBody BusinessAccountModel businessAccountModel)
 			throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "update business_account_table set specialityFk = ? , biography=?, clinicLocation=?, clinicLocationLongitude=?, clinicLocationLatitude=? where userFk=?";
+		String query = "update business_account_table set specialityFk = ? , biography=?, clinicLocation=?, clinicLocationLongitude=?, clinicLocationLatitude=? where businessAccountId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
@@ -859,7 +1122,7 @@ public class BusinessAccountController {
 			myStmt.setString(3, businessAccountModel.getClinicLocation());
 			myStmt.setDouble(4, businessAccountModel.getClinicLocationLongitude());
 			myStmt.setDouble(5, businessAccountModel.getClinicLocationLatitude());
-			myStmt.setInt(6, businessAccountModel.getUserFk());
+			myStmt.setInt(6, businessAccountModel.getBusinessAccountId());
 			myStmt.executeUpdate();
 			myStmt.close();
 
@@ -882,7 +1145,11 @@ public class BusinessAccountController {
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
 
-		String query = "select * from business_account_table where userFk=?";
+		String query = "select businessAccountId,specialityFk,specialityName,specialityDescription,biography,"
+				+ " clinicLocation,   COALESCE(clinicLocationLongitude, -1) as clinicLocationLongitude,"
+				+ " COALESCE(clinicLocationLatitude, -1) as clinicLocationLatitude from "
+				+ "business_account_table bat right join specialities_table "
+				+ "st on st.specialityId=bat.specialityFk where userFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, userFk);
 
@@ -890,8 +1157,11 @@ public class BusinessAccountController {
 		while (myRs.next()) {
 			JSONObject json = new JSONObject();
 			json.put("businessAccountId", myRs.getInt("businessAccountId"));
-			json.put("userFk", myRs.getInt("userFk"));
+			json.put("userFk", userFk);
 			json.put("specialityFk", myRs.getInt("specialityFk"));
+			json.put("specialityName", myRs.getString("specialityName"));
+			json.put("specialityDescription", myRs.getString("specialityDescription"));
+
 			json.put("biography", myRs.getString("biography"));
 			json.put("clinicLocation", myRs.getString("clinicLocation"));
 			json.put("clinicLocationLongitude", myRs.getFloat("clinicLocationLongitude"));
@@ -943,6 +1213,8 @@ public class BusinessAccountController {
 	public ResponseEntity<Object> getBusinessAccountSchedule(@PathVariable("businessAccountId") int businessAccountId,
 			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage)
 			throws SQLException, IOException, NoSuchAlgorithmException {
+		String query = "";
+		ResultSet myRs = null;
 		ObjectMapper mapper = new ObjectMapper();
 		SimpleModule module = new SimpleModule();
 		module.addDeserializer(Timestamp.class, new TimestampDeserializer());
@@ -950,19 +1222,25 @@ public class BusinessAccountController {
 		JSONObject jsonResponse = new JSONObject();
 		int scheduleId = getScheduleId(businessAccountId);
 		if (scheduleId == -1) {
-			return null;
+			jsonResponse.put("message", "No schedule");
+			jsonResponse.put("responseCode", -1);
+			return ResponseEntity.ok(jsonResponse.toString());
 		}
-		String query = "select COUNT(*) AS total_count from business_account_schedule_slots_table where scheduleFk=?";
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, scheduleId);
-		ResultSet myRs = myStmt.executeQuery();
 		int totalNumberOfPages = 0;
+		if (pageNumber != -1 || recordsByPage != -1) {
+			query = "select COUNT(*) AS total_count from business_account_schedule_slots_table basst where basst.isDeleted=0 and basst.scheduleFk=? ";
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+			myStmt.setInt(1, scheduleId);
+			myRs = myStmt.executeQuery();
 
-		if (myRs.next()) {
-			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
+			if (myRs.next()) {
+				totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
+			}
 		}
-		query = "select slotId,scheduleFk,slotDate,slotStartTime,slotEndTime,isLocked from business_account_schedule_slots_table where scheduleFk=? Group By slotId limit "
-				+ recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+		query = "select slotId,scheduleFk,slotDate,slotStartTime,slotEndTime,isLocked, isReserved from business_account_schedule_slots_table basst where basst.scheduleFk=? and basst.isDeleted=0  Group By slotId "
+				+ (pageNumber != -1 || recordsByPage != -1
+						? "limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage
+						: "");
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, scheduleId);
 
@@ -977,6 +1255,7 @@ public class BusinessAccountController {
 			json.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
 			json.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
 			json.put("isLocked", myRs.getBoolean("isLocked"));
+			json.put("isReserved", myRs.getBoolean("isReserved"));
 
 			jsonArray.put(json);
 
@@ -984,7 +1263,10 @@ public class BusinessAccountController {
 		myRs.close();
 		myStmt.close();
 		JSONObject response = new JSONObject();
-		response.put("totalNumberOfPages", totalNumberOfPages);
+		if (pageNumber != -1 || recordsByPage != -1) {
+			response.put("totalNumberOfPages", totalNumberOfPages);
+
+		}
 		response.put("businessAccountSchedule", jsonArray);
 
 		jsonResponse.put("message", "Success account");
@@ -1027,16 +1309,11 @@ public class BusinessAccountController {
 		while (rs.next()) {
 			scheduleId = rs.getInt("scheduleId");
 		}
-		query = "delete from business_account_schedule_slots_table where scheduleFk=?";
+		query = "update business_account_schedule_slots_table set isDeleted=1 where scheduleFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, scheduleId);
 		myStmt.executeUpdate();
 
-		query = "delete from business_account_schedule_table where businessAccountFk=?";
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-
-		myStmt.setInt(1, businessAccountFk);
-		myStmt.executeUpdate();
 		myStmt.close();
 
 		jsonResponse.put("message", "Schedule deleted Successfully");
@@ -1088,8 +1365,8 @@ public class BusinessAccountController {
 			for (int i = 0; i < businessAccountScheduleSlotModel.length; i++) {
 				myStmt.setInt(1, scheduleId);
 				myStmt.setDate(2, businessAccountScheduleSlotModel[i].getSlotDate());
-				myStmt.setTimestamp(3, businessAccountScheduleSlotModel[i].getSlotStartTime());
-				myStmt.setTimestamp(4, businessAccountScheduleSlotModel[i].getSlotEndTime());
+				myStmt.setTimestamp(3, Timestamp.valueOf(businessAccountScheduleSlotModel[i].getSlotStartTime()));
+				myStmt.setTimestamp(4, Timestamp.valueOf(businessAccountScheduleSlotModel[i].getSlotEndTime()));
 				myStmt.setInt(5, businessAccountScheduleSlotModel[i].getServiceFk());
 
 				myStmt.addBatch();
@@ -1162,31 +1439,40 @@ public class BusinessAccountController {
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		ResultSet myRs = myStmt.executeQuery();
 		int totalNumberOfPages = 0;
-		boolean appendWhere = true;
 		if (myRs.next()) {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
-		query = "SELECT * from (select * from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit 2 OFFSET 0) as temp join specialities_table "
+		query = "select * from (SELECT "
+				+ (globalSearchModel.getUserId() == -1 ? "" : "COALESCE(fv.favoriteId, -1) as favoriteId,")
+				+ " temp.userId,srt.servicePrice, srt.serviceName,srt.serviceId,basst.slotId,basst.isReserved, basst.slotDate, basst.slotStartTime, basst.slotEndTime, basst.isLocked,temp.biography, temp.clinicLocation,temp.clinicLocationLongitude,temp.clinicLocationLatitude,  temp.businessAccountId,  temp.firstName, temp.lastName, temp.userEmail, temp.profilePicture, st.specialityName, st.specialityDescription    from (select *  from business_account_table bat join users_table u on u.userId = bat.userFk where u.isVerified=1 and u.isApproved=1 Limit "
+				+ recordsByPage + " OFFSET " + ((pageNumber - 1) * recordsByPage) + ") as temp join specialities_table "
 				+ " st on temp.specialityFk = st.specialityId join business_account_schedule_table bast "
 				+ " on bast.businessAccountFk = temp.businessAccountId join business_account_schedule_slots_table basst on basst.scheduleFk = bast.scheduleId "
 				+ " join business_accounts_services_table srt on srt.serviceId = basst.serviceFk ";
+		if (globalSearchModel.getUserId() != -1) {
+			query += " left join (select COALESCE(ft.businessAccountFk, -1) as favoriteBusinessAccountFk, COALESCE(ft.favoriteId, -1) as favoriteId from favorites_table ft where ft.userFk="
+					+ globalSearchModel.getUserId()
+					+ ")  as fv ON fv.favoriteBusinessAccountFk = temp.businessAccountId where basst.isDeleted=0";
+		}
 		if (globalSearchModel.getSpecialityFk() != -1) {
-			appendWhere = false;
-			query += " where st.specialityId=" + globalSearchModel.getSpecialityFk();
+			query += " and st.specialityId=" + globalSearchModel.getSpecialityFk();
 		}
 
 		if (globalSearchModel.getMinPrice() != -1 && globalSearchModel.getMaxPrice() != -1
 				&& !Double.isNaN(globalSearchModel.getMinPrice()) && !Double.isNaN(globalSearchModel.getMaxPrice())) {
-			appendWhere = false;
 
-			query += (appendWhere ? " where " : " and ") + "  st.servicePrice >=  " + globalSearchModel.getMinPrice()
-					+ " and st.servicePrice <= " + globalSearchModel.getMaxPrice();
+			query += "and  srt.servicePrice >=  " + globalSearchModel.getMinPrice() + " and srt.servicePrice <= "
+					+ globalSearchModel.getMaxPrice();
 
 		}
 		if (globalSearchModel.getMinAvailability() != null && globalSearchModel.getMaxAvailability() != null) {
-			query += (appendWhere ? " where " : " and ") + " basst.slotStartTime >=  "
-					+ globalSearchModel.getMinAvailability() + " and baast.slotEndTime <= "
-					+ globalSearchModel.getMaxAvailability();
+			query += " and basst.slotStartTime >=  '" + globalSearchModel.getMinAvailability()
+					+ "' and basst.slotEndTime <= '" + globalSearchModel.getMaxAvailability() + "'";
+
+		}
+		query += ") as total";
+		if (globalSearchModel.getIsFavorite() != -2 && globalSearchModel.getUserId() != -1) {
+			query += " where total.favoriteId " + (globalSearchModel.getIsFavorite() == -1 ? " = -1 " : " != -1");
 		}
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1199,13 +1485,16 @@ public class BusinessAccountController {
 				JSONObject userDetails = new JSONObject();
 				JSONObject userSchedule = new JSONObject();
 				int businessAccountId = myRs.getInt("businessAccountId");
-				userSchedule.put("servicePrice", myRs.getString("servicePrice"));
+				userSchedule.put("servicePrice", myRs.getInt("servicePrice"));
 				userSchedule.put("serviceName", myRs.getString("serviceName"));
 				userSchedule.put("serviceId", myRs.getInt("serviceId"));
 				userSchedule.put("slotDate", myRs.getDate("slotDate"));
 				userSchedule.put("slotStartTime", myRs.getTimestamp("slotStartTime"));
 				userSchedule.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
 				userSchedule.put("isLocked", myRs.getBoolean("isLocked"));
+				userSchedule.put("slotId", myRs.getInt("slotId"));
+				userSchedule.put("isReserved", myRs.getBoolean("isReserved"));
+
 				if (map.containsKey(businessAccountId)) {
 					JSONObject json = new JSONObject();
 
@@ -1218,6 +1507,14 @@ public class BusinessAccountController {
 				} else {
 					JSONObject json = new JSONObject();
 					JSONArray userScheduleArray = new JSONArray();
+					userDetails.put("userId", myRs.getInt("userId"));
+					if (globalSearchModel.getUserId() != -1) {
+						userDetails.put("favoriteId", myRs.getInt("favoriteId"));
+
+					} else {
+						userDetails.put("favoriteId", -1);
+
+					}
 					userDetails.put("biography", myRs.getString("biography"));
 					userDetails.put("clinicLocation", myRs.getString("clinicLocation"));
 					userDetails.put("clinicLocationLongitude", myRs.getDouble("clinicLocationLongitude"));
@@ -1268,6 +1565,94 @@ public class BusinessAccountController {
 			jsonResponse.put("responseCode", -1);
 			return ResponseEntity.ok(jsonResponse.toString());
 		}
+
+	}
+
+	// passed
+	@GetMapping("/getAdminStatistics")
+	public ResponseEntity<Object> getAdminStatistics() throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "Select * from (SELECT COUNT(apt.appointmentId) as total_appointments, COUNT(DISTINCT apt.userFk) AS total_patients FROM appointments_table apt"
+
+				+ ") as p1 JOIN (SELECT COUNT(ut.userId) as total_hps from users_table ut where ut.userRole='HEALTH_PROFESSIONAL'"
+
+				+ ") as p2 JOIN (SELECT COUNT(ut.userId) as total_users from users_table ut where ut.userRole='PATIENT'"
+				+ ") as p3";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		ResultSet myRs = myStmt.executeQuery();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("totalAppointments", myRs.getInt("total_appointments"));
+			json.put("totalPatients", myRs.getInt("total_patients"));
+			json.put("totalHps", myRs.getInt("total_hps"));
+			json.put("totalUsers", myRs.getInt("total_users"));
+
+			jsonResponse.put("message", "Results Returned");
+			jsonResponse.put("result", json);
+
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+
+		}
+		return null;
+
+	}
+
+	// passed
+	@GetMapping("/getAllHealthProfessionals/{pageNumber}/{recordsByPage}/{searchText}/{isApproved}")
+	public ResponseEntity<Object> getAllHealthProfessionals(@PathVariable("searchText") String searchText,
+			@PathVariable("pageNumber") int pageNumber, @PathVariable("recordsByPage") int recordsByPage,
+			@PathVariable("isApproved") int isApproved) throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "select count(*) as total_count from users_table ut where ut.userRole='HEALTH_PROFESSIONAL'";
+		if (!searchText.equals("null")) {
+			query += " and (ut.userEmail LIKE '%" + searchText + "%' or ut.firstName LIKE '%" + searchText
+					+ "%' or ut.lastName LIKE '%" + searchText + "%')";
+		}
+		if (isApproved != -2) {
+			query += " and isApproved=" + isApproved;
+		}
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		ResultSet myRs = myStmt.executeQuery();
+		int totalNumberOfPages = 0;
+
+		if (myRs.next()) {
+			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
+		}
+		query = "select * from users_table ut where ut.userRole='HEALTH_PROFESSIONAL'"
+				+ (!searchText.equals("null") ? " and (ut.userEmail LIKE '%" + searchText + "%' or ut.firstName LIKE '%"
+						+ searchText + "%' or ut.lastName LIKE '%" + searchText + "%')" : "");
+		if (isApproved != -2) {
+			query += " and isApproved=" + isApproved;
+		}
+		query += " Limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("userId", myRs.getInt("userId"));
+			json.put("firstName", myRs.getString("firstName"));
+			json.put("lastName", myRs.getString("lastName"));
+			json.put("userEmail", myRs.getString("userEmail"));
+			json.put("profilePicture", myRs.getString("profilePicture"));
+			json.put("isApproved", myRs.getBoolean("isApproved"));
+			json.put("isVerified", myRs.getBoolean("isVerified"));
+
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "All Hps");
+		jsonResponse.put("hps", jsonArray);
+		jsonResponse.put("totalNumberOfPages", totalNumberOfPages);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
 }

@@ -2,18 +2,19 @@ package models;
 
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 import Enums.UserRoles;
 
 public class UserModel {
-	int userId;
+	int userId = -1;
 	String firstName;
 	String lastName;
 	String userEmail;
 	String password;
 	boolean isVerified;
 	int numberOfLoginTrials;
-	Timestamp registrationDate;
+	LocalDateTime registrationDate;
 	boolean isApproved;
 	boolean isLocked;
 	UserRoles userRole;
@@ -90,11 +91,11 @@ public class UserModel {
 		this.numberOfLoginTrials = numberOfLoginTrials;
 	}
 
-	public Timestamp getRegistrationDate() {
+	public LocalDateTime getRegistrationDate() {
 		return registrationDate;
 	}
 
-	public void setRegistrationDate(Timestamp registrationDate) {
+	public void setRegistrationDate(LocalDateTime registrationDate) {
 		this.registrationDate = registrationDate;
 	}
 
@@ -141,7 +142,7 @@ public class UserModel {
 	}
 
 	public UserModel(int userId, String firstName, String lastName, String userEmail, String password,
-			boolean isVerified, int numberOfLoginTrials, Timestamp registrationDate, boolean isApproved, boolean isLocked,
+			boolean isVerified, int numberOfLoginTrials, LocalDateTime registrationDate, boolean isApproved, boolean isLocked,
 			UserRoles userRole, String userLanguage, String profilePicture) {
 		super();
 		this.userId = userId;

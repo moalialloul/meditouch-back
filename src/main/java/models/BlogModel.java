@@ -1,11 +1,12 @@
 package models;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 
 public class BlogModel {
 	int blogId;
 	String blogType;
-	Timestamp blogDate;
+	LocalDateTime blogDate;
 	String blogTitle;
 	String blogUrl;
 
@@ -19,7 +20,7 @@ public class BlogModel {
 		super();
 	}
 
-	public BlogModel(int blogId, String blogType, Timestamp blogDate, String blogTitle, String blogUrl) {
+	public BlogModel(int blogId, String blogType, LocalDateTime blogDate, String blogTitle, String blogUrl) {
 		super();
 		this.blogId = blogId;
 		this.blogType = blogType;
@@ -44,11 +45,11 @@ public class BlogModel {
 		this.blogType = blogType;
 	}
 
-	public Timestamp getBlogDate() {
+	public LocalDateTime getBlogDate() {
 		return blogDate;
 	}
 
-	public void setBlogDate(Timestamp blogDate) {
+	public void setBlogDate(LocalDateTime blogDate) {
 		this.blogDate = blogDate;
 	}
 

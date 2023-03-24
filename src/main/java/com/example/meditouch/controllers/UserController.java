@@ -1,13 +1,17 @@
+
+
 package com.example.meditouch.controllers;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
@@ -46,6 +50,7 @@ import models.CommunityPostModel;
 import models.ContactUsModel;
 import models.FavoriteModel;
 import models.FeedbackModel;
+import models.MedicalInformationModel;
 import models.NotificationsModel;
 import models.PostponeAppointmentModel;
 import models.ReservationSlot;
@@ -53,6 +58,7 @@ import models.SubscriptionModel;
 import models.SurveyAnswersModel;
 import models.SurveyModel;
 import models.SurveyQuestionAnswersModel;
+import models.Test;
 import models.TokenModel;
 import models.UpdatePasswordModel;
 import models.UserModel;
@@ -289,7 +295,7 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setString(1, blogModel.getBlogType());
-		myStmt.setTimestamp(2, blogModel.getBlogDate());
+		myStmt.setTimestamp(2, Timestamp.valueOf(blogModel.getBlogDate()));
 		myStmt.setString(3, blogModel.getBlogTitle());
 		myStmt.setString(4, blogModel.getBlogUrl());
 		myStmt.setInt(5, blogModel.getBlogId());
@@ -336,7 +342,7 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
 		myStmt.setString(1, blogModel.getBlogType());
-		myStmt.setTimestamp(2, blogModel.getBlogDate());
+		myStmt.setTimestamp(2, Timestamp.valueOf(blogModel.getBlogDate()));
 		myStmt.setString(3, blogModel.getBlogTitle());
 		myStmt.setString(4, blogModel.getBlogUrl());
 
@@ -580,6 +586,33 @@ public class UserController {
 	}
 
 	// passed
+	@GetMapping("/getSpecialities")
+	public ResponseEntity<Object> getSpecialities() throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "select * from  specialities_table";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		ResultSet rs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (rs.next()) {
+			JSONObject json = new JSONObject();
+			json.put("specialityId", rs.getInt("specialityId"));
+			json.put("specialityName", rs.getString("specialityName"));
+			json.put("specialityDescription", rs.getString("specialityDescription"));
+			jsonArray.put(json);
+		}
+
+		jsonResponse.put("message", "Specialities");
+		jsonResponse.put("specialities", jsonArray);
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@PostMapping("/postponeAppointment")
 	public ResponseEntity<Object> postponeAppointment(@RequestBody PostponeAppointmentModel postponeAppointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
@@ -588,11 +621,19 @@ public class UserController {
 		String query = "update appointments_table set slotFk=?, isApproved=0 where appointmentId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, postponeAppointmentModel.getSlotFk());
+		myStmt.setInt(1, postponeAppointmentModel.getNewSlotFk());
 
 		myStmt.setInt(2, postponeAppointmentModel.getAppointmentId());
 		myStmt.executeUpdate();
+		query = "update business_account_schedule_slots_table set isReserved=0 where slotId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, postponeAppointmentModel.getOldSlotFk());
+		myStmt.executeUpdate();
 
+		query = "update business_account_schedule_slots_table set isReserved=1 where slotId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, postponeAppointmentModel.getNewSlotFk());
+		myStmt.executeUpdate();
 		JSONObject json = new JSONObject();
 		json.put("type", "POSTPONE");
 		json.put("appointment", postponeAppointmentModel);
@@ -825,23 +866,31 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				communityPostCommentModel.setCommentId(id);
+				query = "select * from users_table where userId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setInt(1, communityPostCommentModel.getUserFk());
+				ResultSet rs = myStmt.executeQuery();
+				if (rs.next()) {
+					JSONObject json = new JSONObject();
+					json.put("userFk", communityPostCommentModel.getUserFk());
+					json.put("postId", communityPostCommentModel.getPostFk());
+					json.put("commentDescription", communityPostCommentModel.getCommentDescription());
+					json.put("commentId", id);
+					json.put("firstName", rs.getString("firstName"));
+					json.put("lastName", rs.getString("lastName"));
+					json.put("userEmail", rs.getString("userEmail"));
+					json.put("profilePicture", rs.getString("profilePicture"));
 
-				JSONObject json = new JSONObject();
-				json.put("type", "ADD");
-				json.put("communityPostComment", communityPostCommentModel);
+					messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
 
-				messagingTemplate.convertAndSend("/topic/communityPostComment/", json.toString());
-				Gson gson = new Gson();
-				String communityPostCommentModelJson = gson.toJson(communityPostCommentModel);
-				JsonObject jsonObject = JsonParser.parseString(communityPostCommentModelJson).getAsJsonObject();
-				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-				jsonResponse.put("message", "Comment Added successfully");
-				jsonResponse.put("post", jsonReturned);
-				jsonResponse.put("responseCode", 200);
-				myStmt.close();
+					jsonResponse.put("message", "Comment Added successfully");
+					jsonResponse.put("post", json);
+					jsonResponse.put("responseCode", 200);
+					myStmt.close();
 
-				return ResponseEntity.ok(jsonResponse.toString());
+					return ResponseEntity.ok(jsonResponse.toString());
+				}
+
 			}
 		}
 		return null;
@@ -866,11 +915,16 @@ public class UserController {
 			totalNumberOfPages = (int) Math.ceil(myRs.getInt("total_count") * 1.0 / recordsByPage);
 		}
 
-		query = "select * from community_posts_table cpt join users_table ut on ut.userId=cpt.userFk ";
+		query = "SELECT" + "    p.postId,    COUNT(c.commentId) AS commentCount,"
+				+ "    u.firstName, u.lastName,u.userEmail, u.profilePicture, p.postService, p.postDescription FROM "
+				+ "    community_posts_table p" + "    LEFT JOIN posts_comments_table c ON p.postid = c.postFk"
+				+ "    JOIN users_table u ON p.userFk = u.userId";
+
 		if (searchText != null) {
 			query += " where cpt.postService LIKE '%" + searchText + "%' or cpt.postDescription LIKE '%" + searchText
 					+ "%'";
 		}
+		query += " GROUP BY" + "    p.postid, u.firstName";
 		query += " limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage;
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -881,6 +935,8 @@ public class UserController {
 			JSONObject json = new JSONObject();
 			json.put("postService", myRs.getString("postService"));
 			json.put("postDescription", myRs.getString("postDescription"));
+			json.put("postId", myRs.getInt("postId"));
+			json.put("commentCount", myRs.getInt("commentCount"));
 
 			json.put("firstName", myRs.getString("firstName"));
 			json.put("lastName", myRs.getString("lastName"));
@@ -904,39 +960,67 @@ public class UserController {
 	public ResponseEntity<Object> registerAppointment(@RequestBody AppointmentModel appointmentModel)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
-
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		String query = "select isReserved from business_account_schedule_slots_table where slotId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, appointmentModel.getSlotFk());
-		myStmt.setInt(2, appointmentModel.getBusinessAccountFk());
-		myStmt.setInt(3, appointmentModel.getUserFk());
-		myStmt.setInt(4, appointmentModel.getServiceFk());
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			boolean isReserved = rs.getBoolean("isReserved");
+			if (!isReserved) {
+				query = "update business_account_schedule_slots_table set isReserved = 1 where slotId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setInt(1, appointmentModel.getSlotFk());
+				myStmt.executeUpdate();
 
-		myStmt.executeUpdate();
-		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
-			if (generatedKeys.next()) {
-				int id = generatedKeys.getInt(1);
-				appointmentModel.setAppointmentId(id);
+				query = "insert into appointments_table (slotFk, businessAccountFk, userFk, serviceFk) values(?, ?,?,?)";
 
-				JSONObject json = new JSONObject();
-				json.put("type", "ADD");
-				json.put("appointment", appointmentModel);
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query,
+						Statement.RETURN_GENERATED_KEYS);
+				myStmt.setInt(1, appointmentModel.getSlotFk());
+				myStmt.setInt(2, appointmentModel.getBusinessAccountFk());
+				myStmt.setInt(3, appointmentModel.getUserFk());
+				myStmt.setInt(4, appointmentModel.getServiceFk());
 
-				messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getBusinessAccountFk(),
-						json.toString());
-				Gson gson = new Gson();
-				String appointmentJson = gson.toJson(appointmentModel);
-				JsonObject jsonObject = JsonParser.parseString(appointmentJson).getAsJsonObject();
-				JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
-				jsonResponse.put("message", "Appointment Added successfully");
-				jsonResponse.put("appointment", jsonReturned);
-				jsonResponse.put("responseCode", 200);
+				myStmt.executeUpdate();
+
+				try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
+					if (generatedKeys.next()) {
+						int id = generatedKeys.getInt(1);
+						appointmentModel.setAppointmentId(id);
+
+						JSONObject json = new JSONObject();
+						json.put("type", "ADD");
+						json.put("appointment", appointmentModel);
+						JSONObject reservedSlot = new JSONObject();
+						reservedSlot.put("reservedSlot", appointmentModel.getSlotFk());
+						messagingTemplate.convertAndSend(
+								"/topic/appointment/" + appointmentModel.getBusinessAccountFk(), json.toString());
+
+						messagingTemplate.convertAndSend("/topic/appointment/" + appointmentModel.getUserFk(),
+								json.toString());
+						messagingTemplate.convertAndSend("/topic/reservedSlots/", reservedSlot.toString());
+						Gson gson = new Gson();
+						String appointmentJson = gson.toJson(appointmentModel);
+						JsonObject jsonObject = JsonParser.parseString(appointmentJson).getAsJsonObject();
+						JSONObject jsonReturned = new JSONObject(jsonObject.entrySet().stream().collect(Collectors
+								.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+						jsonResponse.put("message", "Appointment Added successfully");
+						jsonResponse.put("appointment", jsonReturned);
+						jsonResponse.put("responseCode", 200);
+						myStmt.close();
+
+						return ResponseEntity.ok(jsonResponse.toString());
+					}
+				}
+			} else {
+				jsonResponse.put("message", "Slot Already taken");
+				jsonResponse.put("responseCode", -1);
 				myStmt.close();
 
 				return ResponseEntity.ok(jsonResponse.toString());
 			}
 		}
+
 		return null;
 
 	}
@@ -954,11 +1038,13 @@ public class UserController {
 		ResultSet rs = selectStmt.executeQuery();
 		if (rs.next()) {
 			Timestamp appointmentActualStartTime = rs.getTimestamp("appointmentActualStartTime");
-			Timestamp appointmentActualStartTimeNewValue = appointmentModel.getAppointmentActualStartTime();
+			Timestamp appointmentActualStartTimeNewValue = Timestamp
+					.valueOf(appointmentModel.getAppointmentActualStartTime());
 			boolean isCancelled = rs.getBoolean("isCancelled");
 			boolean isCancelledNewValue = appointmentModel.getIsCancelled();
 			Timestamp appointmentActualEndTime = rs.getTimestamp("appointmentActualEndTime");
-			Timestamp appointmentActualEndTimeNewValue = appointmentModel.getAppointmentActualEndTime();
+			Timestamp appointmentActualEndTimeNewValue = Timestamp
+					.valueOf(appointmentModel.getAppointmentActualEndTime());
 
 			if (!Objects.equals(appointmentActualStartTime, appointmentActualStartTimeNewValue)) {
 				JSONObject json = new JSONObject();
@@ -993,8 +1079,8 @@ public class UserController {
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 
-		myStmt.setTimestamp(1, appointmentModel.getAppointmentActualStartTime());
-		myStmt.setTimestamp(2, appointmentModel.getAppointmentActualEndTime());
+		myStmt.setTimestamp(1, Timestamp.valueOf(appointmentModel.getAppointmentActualStartTime()));
+		myStmt.setTimestamp(2, Timestamp.valueOf(appointmentModel.getAppointmentActualEndTime()));
 		myStmt.setString(3, appointmentModel.getAppointmentStatus().toString());
 		myStmt.setBoolean(4, appointmentModel.getIsApproved());
 		myStmt.setBoolean(5, appointmentModel.getIsCancelled());
@@ -1036,7 +1122,7 @@ public class UserController {
 				query = "select * from users_table where userId=" + communityPostModel.getUserFk();
 				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 				ResultSet rs = myStmt.executeQuery();
-				if(rs.next()) {
+				if (rs.next()) {
 					JSONObject jsonResponseData = new JSONObject();
 					jsonResponseData.put("postId", id);
 					jsonResponseData.put("userFk", communityPostModel.getUserFk());
@@ -1060,7 +1146,7 @@ public class UserController {
 
 					return ResponseEntity.ok(jsonResponse.toString());
 				}
-			
+
 			}
 		}
 		return null;
@@ -1193,14 +1279,27 @@ public class UserController {
 			if (generatedKeys.next()) {
 				int id = generatedKeys.getInt(1);
 				favoriteModel.setFavoriteId(id);
-				Gson gson = new Gson();
-				String favoriteJson = gson.toJson(favoriteModel);
-				JsonObject jsonObject = JsonParser.parseString(favoriteJson).getAsJsonObject();
-				JSONObject json = new JSONObject(jsonObject.entrySet().stream().collect(
-						Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getAsJsonPrimitive().getAsString())));
+				JSONObject json = new JSONObject();
+				json.put("favoriteId", id);
+				json.put("businessAccountFk", favoriteModel.getBusinessAccountFk());
+
 				jsonResponse.put("message", "Favorite Added successfully");
 				jsonResponse.put("favorite", json);
 				jsonResponse.put("responseCode", 200);
+				JSONObject socketJson = new JSONObject();
+				socketJson.put("type", "ADD");
+				socketJson.put("favoriteDoctorInfo", json);
+				query = "select COALESCE(onFavorite,1) from notifications_settings ns join users_table ut on ut.userId=ns.userFk join "
+						+ "business_account_table bat on bat.userFk=ut.userId where bat.businessAccountId=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setInt(1, favoriteModel.getBusinessAccountFk());
+				ResultSet rs = myStmt.executeQuery();
+				if (rs.next()) {
+					if (rs.getBoolean("onFavorite") == true) {
+						messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + favoriteModel.getUserFk(),
+								socketJson.toString());
+					}
+				}
 				myStmt.close();
 
 				return ResponseEntity.ok(jsonResponse.toString());
@@ -1280,14 +1379,29 @@ public class UserController {
 	public ResponseEntity<Object> deleteFavorite(@PathVariable("favoriteId") int favoriteId)
 			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "delete from favorites_table where favoriteId=?";
+		int userId = -1;
+		String query = "select * from favorites_table where favoriteId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, favoriteId);
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			userId = rs.getInt("userFk");
+		}
+		query = "delete from favorites_table where favoriteId=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, favoriteId);
 
 		myStmt.executeUpdate();
+		JSONObject json = new JSONObject();
+		json.put("favoriteId", favoriteId);
+		json.put("type", "DELETE");
+
 		jsonResponse.put("message", "Favorite deleted successfully");
 		jsonResponse.put("responseCode", 200);
+
+		messagingTemplate.convertAndSend("/topic/favoriteDoctors/" + userId, json.toString());
+
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
@@ -1500,31 +1614,58 @@ public class UserController {
 	}
 
 	// passed
-	@GetMapping("/getGeneralStatistics")
-	public ResponseEntity<Object> getGeneralStatistics() throws SQLException, IOException, NoSuchAlgorithmException {
+	@GetMapping("/getMedicalInformation/{userFk}")
+	public ResponseEntity<Object> getMedicalInformation(@PathVariable("userFk") int userFk)
+			throws SQLException, IOException, NoSuchAlgorithmException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "select * from ((select count(CASE when ut.userRole='HEALTH_PROFESSIONAL' THEN 1 END) as number_of_hps, count(CASE when ut.userRole='PATIENT' THEN 1 END) as number_of_pts from users_table ut) as q1 join (SELECT count(appointmentId) as number_of_appointments from appointments_table apt) as q2 join (select count(*) as number_of_specialities from specialities_table st)as q3)";
+		String query = "select * from medical_information where userFk=?";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
 
 		ResultSet myRs = myStmt.executeQuery();
-		while (myRs.next()) {
-			JSONObject json = new JSONObject();
-			json.put("number_of_hps", myRs.getInt("number_of_hps"));
-			json.put("number_of_pts", myRs.getInt("number_of_pts"));
-			json.put("number_of_appointments", myRs.getInt("number_of_appointments"));
-			json.put("number_of_specialities", myRs.getInt("number_of_specialities"));
+		JSONObject json = new JSONObject();
+		if (myRs.next()) {
+			json.put("height", myRs.getInt("height"));
+			json.put("weight", myRs.getInt("weight"));
 
-			jsonResponse.put("message", "Statistics");
-			jsonResponse.put("statistics", json);
+			json.put("diseasesDescription", myRs.getString("diseasesDescription"));
+			json.put("vaccinationDescription", myRs.getString("vaccinationDescription"));
 
-			jsonResponse.put("responseCode", 200);
-			myStmt.close();
-
-			return ResponseEntity.ok(jsonResponse.toString());
 		}
+		jsonResponse.put("message", "Medical Information");
+		jsonResponse.put("medical_information", json);
 
-		return null;
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@PutMapping("/setMedicalInformation")
+	public ResponseEntity<Object> setMedicalInformation(@RequestBody MedicalInformationModel medicalInformationModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update medical_information set height=?, weight=?, diseasesDescription=?,vaccinationDescription=? where userFk=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, medicalInformationModel.getHeight());
+		myStmt.setInt(2, medicalInformationModel.getWeight());
+		myStmt.setString(3, medicalInformationModel.getDiseasesDescription());
+		myStmt.setString(4, medicalInformationModel.getVaccinationDescription());
+		myStmt.setInt(5, medicalInformationModel.getUserFk());
+
+		myStmt.executeUpdate();
+
+		jsonResponse.put("message", "Medical Information Updated Successully");
+
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
 	}
 
 	// passed
@@ -1638,7 +1779,6 @@ public class UserController {
 			json.put("password", myRs.getString("password"));
 			json.put("isVerified", myRs.getBoolean("isVerified"));
 			json.put("numberOfLoginTrials", myRs.getInt("numberOfLoginTrials"));
-			json.put("registrationDate", myRs.getDate("registrationDate"));
 			json.put("isApproved", myRs.getBoolean("isApproved"));
 			json.put("isLocked", myRs.getBoolean("isLocked"));
 			json.put("userRole", myRs.getString("userRole"));
@@ -1722,6 +1862,27 @@ public class UserController {
 	public ResponseEntity<Object> generateToken(@RequestBody UserModel user,
 			@PathVariable("tokenType") String tokenType) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
+
+		if (user.getUserId() == -1) {
+			if (isUserEmailExist(user)) {
+				String query = "select * from users_table where userEmail=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+				myStmt.setString(1, user.getUserEmail());
+
+				ResultSet myRs = myStmt.executeQuery();
+				if (myRs.next()) {
+					user.setUserId(myRs.getInt("userId"));
+				} else {
+					jsonResponse.put("message", "User doesnot Exist");
+					jsonResponse.put("responseCode", -1);
+					return ResponseEntity.ok(jsonResponse.toString());
+				}
+			} else {
+				jsonResponse.put("message", "User doesnot Exist");
+				jsonResponse.put("responseCode", -1);
+				return ResponseEntity.ok(jsonResponse.toString());
+			}
+		}
 		String query = "insert into "
 				+ (tokenType.equals(TokenType.REGISTRATION.toString()) ? "tokens_table" : "password_tokens_table")
 				+ "(userFk, tokenValue, expiryDate) values ( ?, ?,?)";
@@ -1740,6 +1901,7 @@ public class UserController {
 
 		myStmt.executeUpdate();
 		myStmt.close();
+		jsonResponse.put("userId", user.getUserId());
 
 		jsonResponse.put("message", "Check your email");
 		jsonResponse.put("responseCode", 200);
@@ -1748,14 +1910,74 @@ public class UserController {
 	}
 
 	// passed
-	@PutMapping("/verifyUser/{userId}")
-	public ResponseEntity<Object> verifyUser(@PathVariable("userId") int userId) throws SQLException, IOException {
+	@PutMapping("/verifyUser")
+	public ResponseEntity<Object> verifyUser(@RequestBody UserModel user) throws SQLException, IOException {
 		JSONObject jsonResponse = new JSONObject();
-		String query = "update users_table set isVerified = true where userId=?";
 
-		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-		myStmt.setInt(1, userId);
+		String query = "update users_table set isVerified = true where "
+				+ (user.getUserId() == -1 ? "userEmail=?" : "userId=?");
+
+		if (user.getUserId() == -1) {
+			if (isUserEmailExist(user)) {
+				String query2 = "select businessAccountId, isVerified, userId, userRole from users_table ut  left join business_account_table bat on bat.userFk=ut.userId where userEmail=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query2);
+
+				myStmt.setString(1, user.getUserEmail());
+				ResultSet rs = myStmt.executeQuery();
+				if (rs.next()) {
+					boolean isVerified=rs.getBoolean("isVerified");
+					if (isVerified) {
+						String userRole = rs.getString("userRole");
+						jsonResponse.put("userRole", userRole);
+						jsonResponse.put("businessAccountId", rs.getInt("businessAccountId"));
+
+						jsonResponse.put("message", "User Already Verified");
+						jsonResponse.put("responseCode", -1);
+						return ResponseEntity.ok(jsonResponse.toString());
+					} else {
+						user.setUserId(rs.getInt("userId"));
+						myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+						myStmt.setString(1, user.getUserEmail());
+
+					}
+				}
+			} else {
+				jsonResponse.put("message", "User Email not found");
+				jsonResponse.put("responseCode", -1);
+				return ResponseEntity.ok(jsonResponse.toString());
+			}
+		} else {
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+			myStmt.setInt(1, user.getUserId());
+
+		}
 		myStmt.executeUpdate();
+		String query2 = "select * from users_table where " + (user.getUserId() == -1 ? "userEmail=?" : "userId=?");
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query2);
+
+		if (user.getUserId() == -1) {
+			myStmt.setString(1, user.getUserEmail());
+		} else {
+			myStmt.setInt(1, user.getUserId());
+
+		}
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			String userRole = rs.getString("userRole");
+			jsonResponse.put("userRole", userRole);
+			if (userRole.toString().equals("HEALTH_PROFESSIONAL")) {
+				String query3 = "select * from business_account_table where userFk=?";
+				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query3);
+				myStmt.setInt(1, user.getUserId());
+				ResultSet rs2 = myStmt.executeQuery();
+				if (rs2.next()) {
+					jsonResponse.put("businessAccountId", rs2.getInt("businessAccountId"));
+
+				}
+			}
+		}
+
 		myStmt.close();
 
 		jsonResponse.put("message", "User is verified successfully");
@@ -1833,6 +2055,7 @@ public class UserController {
 				Statement.RETURN_GENERATED_KEYS);
 		String hashedPassword = PasswordUtils.hashPassword(user.getPassword());
 		Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+		LocalDateTime ldt = LocalDateTime.now();
 
 		myStmt.setString(1, user.getFirstName());
 		myStmt.setString(2, user.getLastName());
@@ -1842,7 +2065,7 @@ public class UserController {
 		myStmt.setString(6, user.getUserLanguage());
 		myStmt.setString(7, user.getProfilePicture());
 		myStmt.setTimestamp(8, timestamp);
-		user.setRegistrationDate(timestamp);
+		user.setRegistrationDate(ldt);
 		myStmt.executeUpdate();
 
 		try (ResultSet generatedKeys = myStmt.getGeneratedKeys()) {
@@ -1851,11 +2074,18 @@ public class UserController {
 				user.setUserId(id);
 
 				generatedKeys.close();
-				myStmt.close();
 				if (user.getUserRole() == UserRoles.HEALTH_PROFESSIONAL) {
 					BusinessAccountController
 							.registerBusinessAccount(new BusinessAccountModel(-1, id, 1, "", "", -1, -1));
+				} else {
+					String query = "insert into medical_information (userFk) values(?)";
+					myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+					myStmt.setInt(1, id);
+					myStmt.executeUpdate();
+
 				}
+				myStmt.close();
+
 				return generateToken(user, TokenType.REGISTRATION.toString());
 
 			} else {
@@ -1865,4 +2095,115 @@ public class UserController {
 			}
 		}
 	}
+
+	// passed
+	@PostMapping("/test")
+	public ResponseEntity<Object> test(@RequestBody Test test)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "insert into test_dates (date) values(?)";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		myStmt.setTimestamp(1, Timestamp.valueOf(test.getDate()));
+		myStmt.executeUpdate();
+
+		jsonResponse.put("message", "added");
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@GetMapping("/getTest")
+	public ResponseEntity<Object> getTest() throws SQLException, IOException, NoSuchAlgorithmException {
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "select *  from test_dates ";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query, Statement.RETURN_GENERATED_KEYS);
+		ResultSet rs = myStmt.executeQuery();
+		while (rs.next()) {
+			jsonResponse.put("message", rs.getTimestamp("date"));
+			jsonResponse.put("responseCode", 200);
+			myStmt.close();
+
+			return ResponseEntity.ok(jsonResponse.toString());
+		}
+
+		return null;
+
+	}
+
+	// passed
+	@GetMapping("/getUserStatistics/{userFk}")
+	public ResponseEntity<Object> getUserStatistics(@PathVariable("userFk") int userFk)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+		String query = "Select * from (select count(appointmentId) as total_appointments from appointments_table where userFk="
+				+ userFk
+				+ ") as p1 JOIN (SELECT COUNT(appointmentId) as total_done_appointments from appointments_table where appointmentActualStartTime is not null and appointmentActualEndTime is not null and userFk="
+				+ userFk
+				+ ") as p2 JOIN (SELECT COUNT(appointmentId) as total_rejected_appointments from appointments_table where appointmentStatus='REJECTED' and userFk="
+				+ userFk
+				+ ") as p3 JOIN (SELECT COUNT(appointmentId) as total_accepted_appointments from appointments_table where appointmentStatus='ACCEPTED' and userFk="
+				+ userFk + ") as p4";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+
+		ResultSet myRs = myStmt.executeQuery();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("totalAppointments", myRs.getInt("total_appointments"));
+			json.put("totalDoneAppointments", myRs.getInt("total_done_appointments"));
+			json.put("totalRejectedAppointments", myRs.getInt("total_rejected_appointments"));
+			json.put("totalAcceptedAppointments", myRs.getInt("total_accepted_appointments"));
+
+			jsonResponse.put("message", "Results Returned");
+			jsonResponse.put("result", json);
+
+			jsonResponse.put("responseCode", 200);
+			return ResponseEntity.ok(jsonResponse.toString());
+
+		}
+		return null;
+
+	}
+
+	@GetMapping("/getUserAppointmentsStatistics/{userFk}/{fromDate}/{toDate}")
+	public ResponseEntity<Object> getUserAppointmentsStatistics(@PathVariable("userFk") int userFk,
+			@PathVariable("fromDate") Date fromDate, @PathVariable("toDate") Date toDate)
+			throws SQLException, IOException {
+		JSONObject jsonResponse = new JSONObject();
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(
+				"SELECT sum(a.isCancelled = 1) as num_appointments_cancelled,sum(a.isCancelled = 0) as num_appointments_not_cancelled, sum(a.isApproved = 1) as num_appointments_approved ,sum(a.isApproved = 0) as num_appointments_not_approved, DATE(basst.slotDate) AS appointment_date, COUNT(a.appointmentId) AS num_appointments FROM appointments_table a INNER JOIN business_account_schedule_slots_table basst ON a.slotFk = basst.slotId where date(basst.slotDate) between '"
+						+ fromDate + "' and '" + toDate + "' and a.userFk=? GROUP BY DATE(basst.slotDate)" + "");
+		myStmt.setInt(1, userFk);
+
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("appointmentDate", myRs.getDate("appointment_date"));
+			json.put("numAppointments", myRs.getInt("num_appointments"));
+			json.put("numAppointmentsCancelled", myRs.getInt("num_appointments_cancelled"));
+			json.put("numAppointmentsNotCancelled", myRs.getInt("num_appointments_not_cancelled"));
+			json.put("numAppointmentsNotApproved", myRs.getInt("num_appointments_not_approved"));
+			json.put("numAppointmentsApproved", myRs.getInt("num_appointments_approved"));
+
+			jsonArray.put(json);
+
+		}
+		jsonResponse.put("message", "Results Returned");
+		jsonResponse.put("results", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
 }
