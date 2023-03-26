@@ -622,6 +622,8 @@ public class UserController {
 			list.add(new NotificationsModel(false, 0, myRs.getInt("userFk"), userFromFk, notificationText,
 					NotificationType.APPOINTMENT_STATUS, ""));
 			addNotification(list);
+
+			messagingTemplate.convertAndSend("/topic/notifications/" + myRs.getInt("userFk"), jsonSocket.toString());
 		}
 	}
 
@@ -1168,7 +1170,7 @@ public class UserController {
 
 						JSONObject reservedSlot = new JSONObject();
 						reservedSlot.put("reservedSlotId", appointmentModel.getSlotFk());
-						reservedSlot.put("type", "DELETE");
+						reservedSlot.put("type", "ADD");
 
 						query = "select * from users_table ut cross join business_account_schedule_slots_table basst where  userId=? and basst.slotId=?";
 						myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1226,7 +1228,7 @@ public class UserController {
 		PreparedStatement myStmt;
 
 		JSONObject jsonResponse = new JSONObject();
-		String selectQuery = "SELECT basst.slotStartTime,ut.firstName as hpFirstName, ut.lastName as hpLastName ,ut.profilePicture, ut2.firstName as patientFirstName, ut2.lastName as patientLastName ,ut2.profilePicture as patientProfilePicture, isCancelled,appointmentStatus,appointmentActualStartTime, appointmentActualEndTime, basst.slotStartTime    FROM appointments_table apt cross join business_account_schedule_slots_table basst  cross join users_table ut cross join users_table ut2 WHERE appointmentId=? and ut.userId=? and basst.slotId=? and ut2.userId=?";
+		String selectQuery = "SELECT basst.slotStartTime,ut.firstName as hpFirstName, ut.lastName as hpLastName ,ut.profilePicture as hpProfilePicture, ut2.firstName as patientFirstName, ut2.lastName as patientLastName ,ut2.profilePicture as patientProfilePicture, isCancelled,appointmentStatus,appointmentActualStartTime, appointmentActualEndTime, basst.slotStartTime    FROM appointments_table apt cross join business_account_schedule_slots_table basst  cross join users_table ut cross join users_table ut2 WHERE appointmentId=? and ut.userId=? and basst.slotId=? and ut2.userId=?";
 		PreparedStatement selectStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(selectQuery);
 		selectStmt.setInt(1, appointmentModel.getAppointmentId());
 		selectStmt.setInt(2, appointmentModel.getBusinessAccountUserId());

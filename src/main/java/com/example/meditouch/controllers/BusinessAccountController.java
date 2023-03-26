@@ -1462,7 +1462,7 @@ public class BusinessAccountController {
 			}
 			myRs.close();
 		}
-		query = "select slotId,scheduleFk,slotDate,slotStartTime,slotEndTime,isLocked, isReserved from business_account_schedule_slots_table basst where basst.scheduleFk=? and basst.isDeleted=0  Group By slotId "
+		query = "select serviceId,servicePrice,serviceName,currencyUnit, slotId,scheduleFk,slotDate,slotStartTime,slotEndTime,isLocked, isReserved from business_account_schedule_slots_table basst left join business_accounts_services_table bast on bast.serviceId=basst.serviceFk where basst.scheduleFk=? and basst.isDeleted=0  Group By slotId "
 				+ (pageNumber != -1 || recordsByPage != -1
 						? "limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage
 						: "");
@@ -1481,6 +1481,10 @@ public class BusinessAccountController {
 			json.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
 			json.put("isLocked", myRs.getBoolean("isLocked"));
 			json.put("isReserved", myRs.getBoolean("isReserved"));
+			json.put("serviceId", myRs.getInt("serviceId"));
+			json.put("servicePrice", myRs.getInt("servicePrice"));
+			json.put("serviceName", myRs.getString("serviceName"));
+			json.put("currencyUnit", myRs.getString("currencyUnit"));
 
 			jsonArray.put(json);
 
@@ -1723,7 +1727,7 @@ public class BusinessAccountController {
 		boolean appendWhere = true;
 		if (globalSearchModel.getSpecialityFk() != -1) {
 			query += " where st.specialityId=" + globalSearchModel.getSpecialityFk();
-			appendWhere=false;
+			appendWhere = false;
 		}
 
 		if (globalSearchModel.getMinPrice() != -1 && globalSearchModel.getMaxPrice() != -1
@@ -1731,16 +1735,14 @@ public class BusinessAccountController {
 
 			query += (!appendWhere ? "and " : " where ") + "srt.servicePrice >=  " + globalSearchModel.getMinPrice()
 					+ " and srt.servicePrice <= " + globalSearchModel.getMaxPrice();
-			appendWhere=false;
-
+			appendWhere = false;
 
 		}
 		if (globalSearchModel.getMinAvailability() != null && globalSearchModel.getMaxAvailability() != null) {
 			query += (!appendWhere ? "and " : " where ") + " basst.slotStartTime >=  '"
 					+ globalSearchModel.getMinAvailability() + "' and basst.slotEndTime <= '"
 					+ globalSearchModel.getMaxAvailability() + "'";
-			appendWhere=false;
-
+			appendWhere = false;
 
 		}
 		query += ") as total";
@@ -1748,12 +1750,13 @@ public class BusinessAccountController {
 			query += (!appendWhere ? " and " : " where ") + " firstName LIKE '%" + globalSearchModel.getSearchText()
 					+ "%' or lastName LIKE '%" + globalSearchModel.getSearchText() + "%' or clinicLocation LIKE '%"
 					+ globalSearchModel.getSearchText() + "%' ";
-			appendWhere=false;
+			appendWhere = false;
 
 		}
 		if (globalSearchModel.getIsFavorite() != -2 && globalSearchModel.getUserId() != -1) {
-			query += (!appendWhere ? " and " : " where ") + " total.favoriteId " + (globalSearchModel.getIsFavorite() == -1 ? " = -1 " : " != -1");
-			appendWhere=false;
+			query += (!appendWhere ? " and " : " where ") + " total.favoriteId "
+					+ (globalSearchModel.getIsFavorite() == -1 ? " = -1 " : " != -1");
+			appendWhere = false;
 
 		}
 
