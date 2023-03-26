@@ -42,6 +42,8 @@ import com.google.gson.JsonParser;
 import Enums.NotificationType;
 import Enums.TokenType;
 import Enums.UserRoles;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.AddressException;
 import models.AppointmentModel;
 import models.BlogModel;
 import models.BusinessAccountModel;
@@ -62,12 +64,15 @@ import models.Test;
 import models.TokenModel;
 import models.UpdatePasswordModel;
 import models.UserModel;
+import services.EmailService;
 
 @RestController
 public class UserController {
 	private SimpMessagingTemplate messagingTemplate;
+	private final EmailService emailService;
 
 	public UserController(SimpMessagingTemplate messagingTemplate) {
+		this.emailService = new EmailService();
 		this.messagingTemplate = messagingTemplate;
 	}
 
@@ -750,8 +755,8 @@ public class UserController {
 					json.toString());
 
 			String notificationText = rs3.getString("firstName") + " " + rs3.getString("lastName")
-					+ " postponed the appointment from " + rs3.getTimestamp("oldSlotStartTime") + " to "
-					+ rs3.getTimestamp("newSlotStartTime");
+					+ " postponed the appointment from [" + rs3.getTimestamp("oldSlotStartTime") + "] to ["
+					+ rs3.getTimestamp("newSlotStartTime") + "]";
 			JSONObject jsonNotificationReturned = new JSONObject();
 			jsonNotificationReturned.put("userFromFk", postponeAppointmentModel.getUserFk());
 			jsonNotificationReturned.put("userToFk", postponeAppointmentModel.getBusinessAccountUserId());
@@ -1454,6 +1459,7 @@ public class UserController {
 					jsonResponseData.put("lastName", rs.getString("lastName"));
 					jsonResponseData.put("userEmail", rs.getString("userEmail"));
 					jsonResponseData.put("profilePicture", rs.getString("profilePicture"));
+					jsonResponseData.put("commentCount", 0);
 
 					JSONObject json = new JSONObject();
 
@@ -1594,7 +1600,7 @@ public class UserController {
 	// passed
 	@PostMapping("/addFavorite")
 	public ResponseEntity<Object> addFavorite(@RequestBody FavoriteModel favoriteModel)
-			throws SQLException, IOException, NoSuchAlgorithmException {
+			throws SQLException, IOException, NoSuchAlgorithmException, AddressException, MessagingException {
 		PreparedStatement myStmt;
 
 		JSONObject jsonResponse = new JSONObject();
@@ -1621,7 +1627,7 @@ public class UserController {
 				socketJson.put("favoriteDoctorInfo", json);
 				query = "select COALESCE(onFavorite,1) as onFavorite, ut2.firstName as patientFirstName, "
 						+ "ut2.lastName patientLastName, ut2.profilePicture patientProfilePicture, ut.userId "
-						+ "as businessAccountUserId from notifications_settings ns cross join users_table ut2 cross join users_table ut on ut.userId=ns.userFk join "
+						+ "as businessAccountUserId, ut.userEmail  as businessAccountUserEmail  from notifications_settings ns cross join users_table ut2 cross join users_table ut on ut.userId=ns.userFk join "
 						+ "business_account_table bat on bat.userFk=ut.userId where bat.businessAccountId=? "
 						+ "and ut2.userId=?";
 				myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1649,6 +1655,8 @@ public class UserController {
 						addNotification(list);
 						messagingTemplate.convertAndSend("/topic/notifications/" + rs.getInt("businessAccountUserId"),
 								jsonNotificationReturned.toString());
+						emailService.sendMail("mohammadalialloul@gmail.com", "Favortie", "Added");
+
 					}
 				}
 				myStmt.close();
@@ -2319,7 +2327,8 @@ public class UserController {
 	// passed
 	@PostMapping("/generateToken/{tokenType}")
 	public ResponseEntity<Object> generateToken(@RequestBody UserModel user,
-			@PathVariable("tokenType") String tokenType) throws SQLException, IOException {
+			@PathVariable("tokenType") String tokenType)
+			throws SQLException, IOException, AddressException, MessagingException {
 		JSONObject jsonResponse = new JSONObject();
 		PreparedStatement myStmt;
 
@@ -2365,6 +2374,8 @@ public class UserController {
 
 		jsonResponse.put("message", "Check your email");
 		jsonResponse.put("responseCode", 200);
+		emailService.sendMail(user.getUserEmail(), "Verification Token", "Enter " + randomToken + " to verify your "
+				+ ((tokenType.equals(TokenType.REGISTRATION.toString()) ? "registration" : "password")));
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
@@ -2449,7 +2460,8 @@ public class UserController {
 
 	// passed
 	@PutMapping("/approveUser/{userId}")
-	public ResponseEntity<Object> approveUser(@PathVariable("userId") int userId) throws SQLException, IOException {
+	public ResponseEntity<Object> approveUser(@PathVariable("userId") int userId)
+			throws SQLException, IOException, AddressException, MessagingException {
 		JSONObject jsonResponse = new JSONObject();
 		String query = "update users_table set isApproved = true where userId=?";
 		PreparedStatement myStmt;
@@ -2457,6 +2469,13 @@ public class UserController {
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		myStmt.setInt(1, userId);
 		myStmt.executeUpdate();
+		myStmt = DatabaseConnection.getInstance().getMyCon()
+				.prepareStatement("select userEmail from users_table where userId=?");
+		myStmt.setInt(1, userId);
+		ResultSet rs = myStmt.executeQuery();
+		if (rs.next()) {
+			emailService.sendMail(rs.getString("userEmail"), "Approved", "Meditouch approved you. You can login now");
+		}
 		myStmt.close();
 
 		jsonResponse.put("message", "User is approved successfully");
@@ -2506,7 +2525,7 @@ public class UserController {
 	// passed
 	@PostMapping("/registerUser")
 	public ResponseEntity<Object> registerUser(@RequestBody UserModel user)
-			throws SQLException, IOException, NoSuchAlgorithmException {
+			throws SQLException, IOException, NoSuchAlgorithmException, AddressException, MessagingException {
 		JSONObject jsonResponse = new JSONObject();
 		PreparedStatement myStmt;
 
