@@ -627,15 +627,13 @@ public class UserController {
 			reservationJson.put("profilePicture", myRs.getString("profilePicture"));
 			reservationJson.put("specialityName", myRs.getString("specialityName"));
 			reservationJson.put("specialityDescription", myRs.getString("specialityDescription"));
-			
-			messagingTemplate.convertAndSend(
-					"/topic/notifications/" + myRs.getInt("userFk"),
-					jsonSocket.toString());
+
+			messagingTemplate.convertAndSend("/topic/notifications/" + myRs.getInt("userFk"), jsonSocket.toString());
 			List<NotificationsModel> list = new ArrayList<>();
 			list.add(new NotificationsModel(false, 0, myRs.getInt("userFk"), userFromFk, notificationText,
 					NotificationType.APPOINTMENT_STATUS, ""));
 			addNotification(list);
-		
+
 		}
 	}
 
@@ -1551,42 +1549,38 @@ public class UserController {
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
-	
+
 	// passed
-		@GetMapping("/getGeneralStatistics")
-		public ResponseEntity<Object> getGeneralStatistics()
-				throws SQLException, IOException, NoSuchAlgorithmException {
-			PreparedStatement myStmt;
+	@GetMapping("/getGeneralStatistics")
+	public ResponseEntity<Object> getGeneralStatistics() throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt;
 
-			JSONObject jsonResponse = new JSONObject();
-			JSONObject json = new JSONObject();
+		JSONObject jsonResponse = new JSONObject();
+		JSONObject json = new JSONObject();
 
-			String query = "SELECT"
-					+ "  (SELECT COUNT(*) FROM users_table) AS total_users,"
-					+ "  (SELECT COUNT(*) FROM business_account_table) AS total_business_accounts,"
-					+ "  (SELECT COUNT(*) FROM appointments_table) AS total_appointments,"
-					+ "  (SELECT COUNT(*) FROM specialities_table) AS total_specialities"
-					+ "";
-			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
-			ResultSet myRs = myStmt.executeQuery();
+		String query = "SELECT" + "  (SELECT COUNT(*) FROM users_table) AS total_users,"
+				+ "  (SELECT COUNT(*) FROM business_account_table) AS total_business_accounts,"
+				+ "  (SELECT COUNT(*) FROM appointments_table) AS total_appointments,"
+				+ "  (SELECT COUNT(*) FROM specialities_table) AS total_specialities" + "";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		ResultSet myRs = myStmt.executeQuery();
 
-			if(myRs.next()) {
-				json.put("number_of_pts", myRs.getInt("total_users"));
-				json.put("number_of_hps", myRs.getInt("total_business_accounts"));
-				json.put("number_of_appointments", myRs.getInt("total_appointments"));
-				json.put("number_of_specialities", myRs.getInt("total_specialities"));
-
-			}
-			jsonResponse.put("message", "All Statistics");
-			jsonResponse.put("statistics", json);
-
-			jsonResponse.put("responseCode", 200);
-			myRs.close();
-			myStmt.close();
-			return ResponseEntity.ok(jsonResponse.toString());
+		if (myRs.next()) {
+			json.put("number_of_pts", myRs.getInt("total_users"));
+			json.put("number_of_hps", myRs.getInt("total_business_accounts"));
+			json.put("number_of_appointments", myRs.getInt("total_appointments"));
+			json.put("number_of_specialities", myRs.getInt("total_specialities"));
 
 		}
+		jsonResponse.put("message", "All Statistics");
+		jsonResponse.put("statistics", json);
 
+		jsonResponse.put("responseCode", 200);
+		myRs.close();
+		myStmt.close();
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
 
 	// passed
 	@GetMapping("/getFavorites/{userFk}/{pageNumber}/{recordsByPage}")
@@ -2608,6 +2602,7 @@ public class UserController {
 			}
 		}
 	}
+
 //	private void sendEmail(String recipient, String subject, String message) throws MessagingException {
 //	    String from = "sender@example.com";
 //	    String password="Sender_password";
