@@ -1,11 +1,16 @@
 package com.example.meditouch;
 
+import java.io.UnsupportedEncodingException;
 import java.security.SecureRandom;
+import java.util.Properties;
+
+
 
 import org.json.JSONObject;
 import org.springframework.http.ResponseEntity;
 
 public class CommonFunctions {
+	
 	private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	private static final int LENGTH = 6;
 
@@ -49,5 +54,7 @@ public class CommonFunctions {
 
 		return distance;
 	}
+
+	
 
 }
