@@ -1,8 +1,8 @@
 
-
 package com.example.meditouch.controllers;
 
 import java.io.IOException;
+import java.net.PasswordAuthentication;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -18,12 +18,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.stream.Collectors;
+
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.springframework.boot.rsocket.server.RSocketServer.Transport;
 import org.springframework.http.ResponseEntity;
-
+import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,6 +45,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mysql.cj.Session;
+import com.mysql.cj.protocol.Message;
 
 import Enums.NotificationType;
 import Enums.TokenType;
@@ -620,10 +627,15 @@ public class UserController {
 			reservationJson.put("profilePicture", myRs.getString("profilePicture"));
 			reservationJson.put("specialityName", myRs.getString("specialityName"));
 			reservationJson.put("specialityDescription", myRs.getString("specialityDescription"));
+			
+			messagingTemplate.convertAndSend(
+					"/topic/notifications/" + myRs.getInt("userFk"),
+					jsonSocket.toString());
 			List<NotificationsModel> list = new ArrayList<>();
 			list.add(new NotificationsModel(false, 0, myRs.getInt("userFk"), userFromFk, notificationText,
 					NotificationType.APPOINTMENT_STATUS, ""));
 			addNotification(list);
+		
 		}
 	}
 
@@ -1170,7 +1182,7 @@ public class UserController {
 
 						JSONObject reservedSlot = new JSONObject();
 						reservedSlot.put("reservedSlotId", appointmentModel.getSlotFk());
-						reservedSlot.put("type", "DELETE");
+						reservedSlot.put("type", "ADD");
 
 						query = "select * from users_table ut cross join business_account_schedule_slots_table basst where  userId=? and basst.slotId=?";
 						myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
@@ -1228,7 +1240,7 @@ public class UserController {
 		PreparedStatement myStmt;
 
 		JSONObject jsonResponse = new JSONObject();
-		String selectQuery = "SELECT basst.slotStartTime,ut.firstName as hpFirstName, ut.lastName as hpLastName ,ut.profilePicture, ut2.firstName as patientFirstName, ut2.lastName as patientLastName ,ut2.profilePicture as patientProfilePicture, isCancelled,appointmentStatus,appointmentActualStartTime, appointmentActualEndTime, basst.slotStartTime    FROM appointments_table apt cross join business_account_schedule_slots_table basst  cross join users_table ut cross join users_table ut2 WHERE appointmentId=? and ut.userId=? and basst.slotId=? and ut2.userId=?";
+		String selectQuery = "SELECT basst.slotStartTime,ut.firstName as hpFirstName, ut.lastName as hpLastName ,ut.profilePicture as hpProfilePicture, ut2.firstName as patientFirstName, ut2.lastName as patientLastName ,ut2.profilePicture as patientProfilePicture, isCancelled,appointmentStatus,appointmentActualStartTime, appointmentActualEndTime, basst.slotStartTime    FROM appointments_table apt cross join business_account_schedule_slots_table basst  cross join users_table ut cross join users_table ut2 WHERE appointmentId=? and ut.userId=? and basst.slotId=? and ut2.userId=?";
 		PreparedStatement selectStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(selectQuery);
 		selectStmt.setInt(1, appointmentModel.getAppointmentId());
 		selectStmt.setInt(2, appointmentModel.getBusinessAccountUserId());
@@ -1539,6 +1551,42 @@ public class UserController {
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
+	
+	// passed
+		@GetMapping("/getGeneralStatistics")
+		public ResponseEntity<Object> getGeneralStatistics()
+				throws SQLException, IOException, NoSuchAlgorithmException {
+			PreparedStatement myStmt;
+
+			JSONObject jsonResponse = new JSONObject();
+			JSONObject json = new JSONObject();
+
+			String query = "SELECT"
+					+ "  (SELECT COUNT(*) FROM users_table) AS total_users,"
+					+ "  (SELECT COUNT(*) FROM business_account_table) AS total_business_accounts,"
+					+ "  (SELECT COUNT(*) FROM appointments_table) AS total_appointments,"
+					+ "  (SELECT COUNT(*) FROM specialities_table) AS total_specialities"
+					+ "";
+			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+			ResultSet myRs = myStmt.executeQuery();
+
+			if(myRs.next()) {
+				json.put("number_of_pts", myRs.getInt("total_users"));
+				json.put("number_of_hps", myRs.getInt("total_business_accounts"));
+				json.put("number_of_appointments", myRs.getInt("total_appointments"));
+				json.put("number_of_specialities", myRs.getInt("total_specialities"));
+
+			}
+			jsonResponse.put("message", "All Statistics");
+			jsonResponse.put("statistics", json);
+
+			jsonResponse.put("responseCode", 200);
+			myRs.close();
+			myStmt.close();
+			return ResponseEntity.ok(jsonResponse.toString());
+
+		}
+
 
 	// passed
 	@GetMapping("/getFavorites/{userFk}/{pageNumber}/{recordsByPage}")
@@ -2560,7 +2608,31 @@ public class UserController {
 			}
 		}
 	}
-
+//	private void sendEmail(String recipient, String subject, String message) throws MessagingException {
+//	    String from = "sender@example.com";
+//	    String password="Sender_password";
+//	    String host = "smtp.example.com";
+//
+//	    Properties properties = System.getProperties();
+//	    properties.put("mail.smtp.host", host);
+//	    properties.put("mail.smtp.port", "587");
+//	    properties.put("mail.smtp.auth", "true");
+//	    properties.put("mail.smtp.starttls.enable", "true");
+//	    
+//	    Session session = Session.getInstance(properties, new javax.mail.Authenticator() {
+//	        protected PasswordAuthentication getPasswordAuthentication() {
+//	            return new PasswordAuthentication(from, password);
+//	        }
+//	    });
+//
+//	    MimeMessage  mimeMessage = new MimeMessage(javax.mail.Session);
+//	    mimeMessage.setFrom(new InternetAddress(from));
+//	    mimeMessage.addRecipient(Message.RecipientType.TO, new InternetAddress(recipient));
+//	    mimeMessage.setSubject(subject);
+//	    mimeMessage.setText(message);
+//
+//	    Transport.send(mimeMessage);
+//	}
 	// passed
 	@PostMapping("/test")
 	public ResponseEntity<Object> test(@RequestBody Test test)
