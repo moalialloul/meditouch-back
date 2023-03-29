@@ -386,14 +386,41 @@ public class BusinessAccountController {
 		int i = 0;
 		while (slotsGeneratedKeys.next()) {
 			appointmentReferralModel[i].setReferralId(slotsGeneratedKeys.getInt(1));
-			query = "select t1.userId as businessAccountReferredByUserId, t3.userId as businessAccountReferredToUserId, COALESCE(onReferral,1), t2.firstName as patientFirstName, t2.lastName as patientLastName,"
-					+ "t2.userEmail as patientUserEmail, t2.profilePicture as patientProfilePicture,"
-					+ "t1.firstName as referredByFirstName, t1.lastName as referredByLastName, "
-					+ "t1.userEmail as referredByUserEmail, t1.profilePicture as referredByProfilePicture  "
-					+ "from (select * from users_table ut join business_account_table bat on "
-					+ "ut.userId=bat.userFk where bat.businessAccountId=?) as t1"
-					+ " join (select * from users_table ut2 where ut2.userId=?) as t2 join (select ns.onReferral from business_account_table bat join notifications_settings ns on ns.userFk = bat.userFk"
-					+ " where bat.businessAccountId=?) as t3   ";
+//			query = "select t1.userId as businessAccountReferredByUserId, t3.userId as businessAccountReferredToUserId, COALESCE(onReferral,1), t2.firstName as patientFirstName, t2.lastName as patientLastName,"
+//					+ "t2.userEmail as patientUserEmail, t2.profilePicture as patientProfilePicture,"
+//					+ "t1.firstName as referredByFirstName, t1.lastName as referredByLastName, "
+//					+ "t1.userEmail as referredByUserEmail, t1.profilePicture as referredByProfilePicture  "
+//					+ "from (select * from users_table ut join business_account_table bat on "
+//					+ "ut.userId=bat.userFk where bat.businessAccountId=?) as t1"
+//					+ " join (select * from users_table ut2 where ut2.userId=?) as t2 join (select ns.onReferral from business_account_table bat join notifications_settings ns on ns.userFk = bat.userFk"
+//					+ " where bat.businessAccountId=?) as t3   ";
+
+			    query = "SELECT t1.userId AS businessAccountReferredByUserId, "
+			        + "t3.userId AS businessAccountReferredToUserId, "
+			        + "COALESCE(onReferral, 1), "
+			        + "t2.firstName AS patientFirstName, "
+			        + "t2.lastName AS patientLastName, "
+			        + "t2.userEmail AS patientUserEmail, "
+			        + "t2.profilePicture AS patientProfilePicture, "
+			        + "t1.firstName AS referredByFirstName, "
+			        + "t1.lastName AS referredByLastName, "
+			        + "t1.userEmail AS referredByUserEmail, "
+			        + "t1.profilePicture AS referredByProfilePicture "
+			        + "FROM (SELECT * "
+			        + "FROM users_table ut "
+			        + "JOIN business_account_table bat "
+			        + "ON ut.userId=bat.userFk "
+			        + "WHERE bat.businessAccountId=?) AS t1 "
+			        + "JOIN (SELECT * "
+			        + "FROM users_table ut2 "
+			        + "WHERE ut2.userId=?) AS t2 "
+			        + "JOIN (SELECT bat.userFk, ns.onReferral, ut.userId "
+			        + "FROM business_account_table bat "
+			        + "JOIN notifications_settings ns "
+			        + "ON ns.userFk = bat.userFk "
+			        + "JOIN users_table ut "
+			        + "ON ut.userId = bat.userFk "
+			        + "WHERE bat.businessAccountId=?) AS t3 ON t3.userFk = t2.userId";
 			myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 			myStmt.setInt(1, appointmentReferralModel[i].getReferredByBusinessAccountFk());
 
@@ -737,7 +764,7 @@ public class BusinessAccountController {
 		JSONObject jsonResponse = new JSONObject();
 
 		myStmt = DatabaseConnection.getInstance().getMyCon()
-				.prepareStatement("select basst.slotStartTime ,atp.appointmentDescription, "
+				.prepareStatement("select basst.slotStartTime ,atp.appointmentDescription as appointmentDescription, "
 						+ "ut2.firstName as patientFirstName, ut2.lastName as patientLastName,"
 						+ " ut2.userEmail as patientUserEmail, ut2.profilePicture as" + " patientProfilePicture,"
 						+ " ut1.firstName as doctorFirstName, ut1.lastName as doctorLastName,"
@@ -1462,7 +1489,9 @@ public class BusinessAccountController {
 			}
 			myRs.close();
 		}
+
 		query = "select serviceId,servicePrice,serviceName,currencyUnit, slotId,scheduleFk,slotDate,slotStartTime,slotEndTime,isLocked, isReserved from business_account_schedule_slots_table basst left join business_accounts_services_table bast on bast.serviceId=basst.serviceFk where basst.scheduleFk=? and basst.isDeleted=0  Group By slotId "
+
 				+ (pageNumber != -1 || recordsByPage != -1
 						? "limit " + recordsByPage + " OFFSET " + (pageNumber - 1) * recordsByPage
 						: "");
@@ -1481,6 +1510,7 @@ public class BusinessAccountController {
 			json.put("slotEndTime", myRs.getTimestamp("slotEndTime"));
 			json.put("isLocked", myRs.getBoolean("isLocked"));
 			json.put("isReserved", myRs.getBoolean("isReserved"));
+
 			json.put("serviceId", myRs.getInt("serviceId"));
 			json.put("servicePrice", myRs.getInt("servicePrice"));
 			json.put("serviceName", myRs.getString("serviceName"));
