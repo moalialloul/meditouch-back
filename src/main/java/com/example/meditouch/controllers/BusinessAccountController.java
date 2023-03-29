@@ -1759,6 +1759,7 @@ public class BusinessAccountController {
 			appendWhere = false;
 
 		}
+		query += (!appendWhere ? " and " : " where ") + "total.isDeleted=0 ";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		try {

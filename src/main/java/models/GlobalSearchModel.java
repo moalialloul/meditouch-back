@@ -12,6 +12,15 @@ public class GlobalSearchModel {
 	double maxPrice = -1;
 	int isFavorite = -2;
 	String searchText = "null";
+	String date;
+
+	public String getDate() {
+		return date;
+	}
+
+	public void setDate(String date) {
+		this.date = date;
+	}
 
 	public String getSearchText() {
 		return searchText;
@@ -87,13 +96,13 @@ public class GlobalSearchModel {
 
 	public GlobalSearchModel(int specialityFk, double minDistance, double maxDistance, double minPrice, double maxPrice,
 			double myLatitude, double myLongitude, LocalDateTime minDateTime, LocalDateTime maxDateTime,
-			LocalDateTime minAvailability, LocalDateTime maxAvailability, int userId, int isFavorite,
-			String searchText) {
+			LocalDateTime minAvailability, LocalDateTime maxAvailability, int userId, int isFavorite, String searchText,
+			String date) {
 		super();
 		this.specialityFk = specialityFk;
 		this.minDistance = minDistance;
 		this.maxDistance = maxDistance;
-
+		this.date = date;
 		this.minPrice = minPrice;
 		this.maxPrice = maxPrice;
 		this.myLatitude = myLatitude;
@@ -121,10 +130,10 @@ public class GlobalSearchModel {
 
 	@Override
 	public String toString() {
-		return "{\"specialityFk\":" + specialityFk + ",\"minDistance\":" + minDistance + ",\"maxDistance\":"
-				+ maxDistance + ", \"minPrice\":" + minPrice + ", \"maxPrice\":" + maxPrice + ", \"myLatitude\" : "
-				+ myLatitude + ", \"myLongitude\":" + myLongitude + ", \"minDateTime\":" + minDateTime
-				+ ",\"maxDateTime\":" + maxDateTime + ",\"minAvailability\":" + minAvailability
+		return "{\"specialityFk\":" + specialityFk + ",\"date\":\"" + date + "\",\"minDistance\":" + minDistance
+				+ ",\"maxDistance\":" + maxDistance + ", \"minPrice\":" + minPrice + ", \"maxPrice\":" + maxPrice
+				+ ", \"myLatitude\" : " + myLatitude + ", \"myLongitude\":" + myLongitude + ", \"minDateTime\":"
+				+ minDateTime + ",\"maxDateTime\":" + maxDateTime + ",\"minAvailability\":" + minAvailability
 				+ ",\"maxAvailability\":" + maxAvailability + ",\"userId\":" + userId + ",\"isFavorite\":" + isFavorite
 				+ ",\"searchText\":\"" + searchText + "\"}";
 	}

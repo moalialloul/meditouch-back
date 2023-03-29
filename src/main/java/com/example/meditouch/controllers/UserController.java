@@ -1055,6 +1055,28 @@ public class UserController {
 	}
 
 	// passed
+	@PostMapping("/updateProfilePicture")
+	public ResponseEntity<Object> updateProfilePicture(@RequestBody UserModel user)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt;
+
+		JSONObject jsonResponse = new JSONObject();
+		String query = "update users_table set profilePicture=? where userId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, user.getProfilePicture());
+		myStmt.setInt(2, user.getUserId());
+
+		myStmt.executeUpdate();
+		jsonResponse.put("message", "Profile Updated successfully");
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@GetMapping("/getCommunityPosts/{pageNumber}/{recordsByPage}/{searchText}")
 	public ResponseEntity<Object> getCommunityPosts(@PathVariable("pageNumber") int pageNumber,
 			@PathVariable("recordsByPage") int recordsByPage,
@@ -2695,4 +2717,39 @@ public class UserController {
 
 	}
 
+	@GetMapping("/getUser/{userId}")
+	public ResponseEntity<Object> getUser(@PathVariable("userId") int userId)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt;
+
+		String query = "select * from users_table where userId=?";
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userId);
+		JSONObject jsonResponse = new JSONObject();
+		JSONObject json = new JSONObject();
+
+		ResultSet myRs = myStmt.executeQuery();
+		if (myRs.next()) {
+			json.put("userId", myRs.getInt("userId"));
+			json.put("firstName", myRs.getString("firstName"));
+			json.put("lastName", myRs.getString("lastName"));
+			json.put("userEmail", myRs.getString("userEmail"));
+			json.put("password", myRs.getString("password"));
+			json.put("isVerified", myRs.getBoolean("isVerified"));
+			json.put("numberOfLoginTrials", myRs.getInt("numberOfLoginTrials"));
+			json.put("isApproved", myRs.getBoolean("isApproved"));
+			json.put("isLocked", myRs.getBoolean("isLocked"));
+			json.put("userRole", myRs.getString("userRole"));
+			json.put("userLanguage", myRs.getString("userLanguage"));
+			json.put("profilePicture", myRs.getString("profilePicture"));
+
+		}
+		myRs.close();
+		myStmt.close();
+		jsonResponse.put("message", "User Returned");
+		jsonResponse.put("user", json);
+
+		jsonResponse.put("responseCode", 200);
+		return ResponseEntity.ok(jsonResponse.toString());
+	}
 }
