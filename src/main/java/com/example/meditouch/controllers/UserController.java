@@ -397,6 +397,38 @@ public class UserController {
 	}
 
 	// passed
+	@GetMapping("/getTranslations/{lng}")
+	public ResponseEntity<Object> getTranslations(@PathVariable("lng") String lng)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt;
+
+		JSONObject jsonResponse = new JSONObject();
+		String query = "select * from translations_table where language=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, lng);
+		ResultSet myRs = myStmt.executeQuery();
+		JSONArray jsonArray = new JSONArray();
+		while (myRs.next()) {
+			JSONObject json = new JSONObject();
+
+			json.put("translationKey", myRs.getString("translationKey"));
+
+			json.put("translationValue", myRs.getString("translationValue"));
+
+			jsonArray.put(json);
+		}
+		jsonResponse.put("message", "All Translations");
+		jsonResponse.put("translations", jsonArray);
+
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
 	@GetMapping("/getBlogs/{pageNumber}/{recordsByPage}")
 	public ResponseEntity<Object> getBlogs(@PathVariable("pageNumber") int pageNumber,
 			@PathVariable("recordsByPage") int recordsByPage)
@@ -441,8 +473,10 @@ public class UserController {
 		PreparedStatement myStmt;
 
 		JSONObject jsonResponse = new JSONObject();
-		String query = "select COUNT(*) AS total_count from notifications_table";
+		String query = "select COUNT(*) AS total_count from notifications_table where userToFk=?";
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setInt(1, userFk);
+
 		ResultSet myRs = myStmt.executeQuery();
 		int totalNumberOfPages = 0;
 
@@ -815,6 +849,28 @@ public class UserController {
 		myStmt.setString(2, userModel.getUserLanguage());
 		myStmt.setString(3, userModel.getProfilePicture());
 		myStmt.setInt(4, userModel.getUserId());
+		myStmt.executeUpdate();
+		jsonResponse.put("message", "User Updated successfully");
+		jsonResponse.put("responseCode", 200);
+		myStmt.close();
+
+		return ResponseEntity.ok(jsonResponse.toString());
+
+	}
+
+	// passed
+	@PutMapping("/updateUserLanguage")
+	public ResponseEntity<Object> updateUserLanguage(@RequestBody UserModel userModel)
+			throws SQLException, IOException, NoSuchAlgorithmException {
+		PreparedStatement myStmt;
+
+		JSONObject jsonResponse = new JSONObject();
+
+		String query = "update users_table set  userLanguage=? where userId=?";
+
+		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
+		myStmt.setString(1, userModel.getUserLanguage());
+		myStmt.setInt(2, userModel.getUserId());
 		myStmt.executeUpdate();
 		jsonResponse.put("message", "User Updated successfully");
 		jsonResponse.put("responseCode", 200);

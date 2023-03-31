@@ -1595,12 +1595,7 @@ public class BusinessAccountController {
 		String query = "";
 		try {
 
-			if (!isBusinessAccountExist(businessAccountFk)) {
-				jsonResponse.put("message", "Business Account Not Found");
-				jsonResponse.put("responseCode", -1);
-				return ResponseEntity.ok(jsonResponse.toString());
-
-			}
+			
 			int scheduleId = getScheduleId(businessAccountFk);
 
 			if (scheduleId != -1) {
@@ -1656,7 +1651,7 @@ public class BusinessAccountController {
 			myStmt = DatabaseConnection.getInstance().getMyCon()
 					.prepareStatement("select * from business_account_schedule_slots_table" + " basst"
 							+ " join business_accounts_services_table "
-							+ " bast on bast.serviceId=basst.serviceFk where scheduleFk=?");
+							+ " bast on bast.serviceId=basst.serviceFk where scheduleFk=? and basst.isDeleted=0");
 			myStmt.setInt(1, scheduleId);
 			ResultSet s2 = myStmt.executeQuery();
 			JSONArray jsonArraySocketResponse = new JSONArray();
@@ -1789,7 +1784,7 @@ public class BusinessAccountController {
 			appendWhere = false;
 
 		}
-		query += (!appendWhere ? " and " : " where ") + "total.isDeleted=0 ";
+		query += " where total.isDeleted=0 ";
 
 		myStmt = DatabaseConnection.getInstance().getMyCon().prepareStatement(query);
 		try {

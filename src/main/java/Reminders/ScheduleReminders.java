@@ -34,7 +34,7 @@ public class ScheduleReminders {
 			try {
 				Calendar calendar = Calendar.getInstance();
 				calendar.setTime(new Date());
-				calendar.set(Calendar.DAY_OF_WEEK, calendar.getFirstDayOfWeek());
+//				calendar.set(Calendar.DAY_OF_WEEK, calendar.getFirstDayOfWeek());
 				Date startDate = calendar.getTime();
 				String formattedStartDate = new SimpleDateFormat("yyyy-MM-dd").format(startDate);
 				calendar.add(Calendar.DAY_OF_WEEK, 6);
