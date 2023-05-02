@@ -29,18 +29,12 @@ public class EmailService {
 	public void sendMail(String to, String subject, String text)
 			throws IOException, AddressException, MessagingException {
 		Properties prop = new Properties();
-		prop.put("mail.smtp.auth", true);
+		prop.put("mail.smtp.auth", false);
 		prop.put("mail.smtp.starttls.enable", "true");
-		prop.put("mail.smtp.host", "smtp.sendgrid.net");
+		prop.put("mail.smtp.host", "smtp.freesmtpservers.com");
 		prop.put("mail.smtp.port", "25");
-		prop.put("mail.smtp.ssl.trust", "smtp.sendgrid.net");
-		Session session = Session.getInstance(prop, new Authenticator() {
-			@Override
-			protected PasswordAuthentication getPasswordAuthentication() {
-				return new PasswordAuthentication("apikey",
-						"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");
-			}
-		});
+//		prop.put("mail.smtp.ssl.trust", "smtp.sendgrid.net");
+		Session session = Session.getInstance(prop);
 		Message message = new MimeMessage(session);
 		message.setFrom(new InternetAddress("dianasleemcs@gmail.com"));
 		message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));

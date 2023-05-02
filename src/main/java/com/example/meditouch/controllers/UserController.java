@@ -2497,6 +2497,16 @@ public class UserController {
 		return ResponseEntity.ok(jsonResponse.toString());
 
 	}
+	
+	// passed
+		@PostMapping("/sendEmail")
+		public void sendEmail()
+				throws SQLException, IOException, MessagingException, jakarta.mail.MessagingException {
+		
+			emailService.sendMail("mohammadalialloul@gmail.com", "Verification Token", "Enter " + "222" + " to verify your "
+					+ " password");
+
+		}
 
 	// passed
 	@PutMapping("/verifyUser")
